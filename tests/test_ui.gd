@@ -242,6 +242,77 @@ func test_child_has_two_games() -> void:
 	has_text(main.message.text, "接住", "玩的时候下面那行显示分数")
 
 
+func _feed_up() -> void:
+	main.game.pet.hunger = 4
+	main.game.pet.happy = 4
+	main.game.pet._settle()
+
+
+func test_baby_cannot_go_out() -> void:
+	_start()
+	_later(6 * 60)
+	main.do_action("out")
+	check(main.dialog == null, "宝宝不能出门")
+	has_text(main.message.text, "太小")
+
+
+func test_going_out_to_the_park() -> void:
+	_start()
+	_later(6 * 60 + 3600)
+	_feed_up()
+	main.do_action("out")
+	check(main.dialog != null, "问去哪儿")
+	eq(main.dialog_buttons[0].text, "公园")
+	eq(main.dialog_buttons[1].text, "旅馆")
+	main.choose(0)
+	eq(main.screen.mode, "out", "屏幕上看它在公园逛")
+	check(Species.DATA.has(main.screen.out_npc), "碰到了一只魔物")
+	has_text(main.message.text, "公园")
+	main.screen._process(4.0)
+	eq(main.screen.mode, "pet", "几秒钟就回来")
+
+
+func test_hotel_from_the_out_menu() -> void:
+	_start()
+	_later(6 * 60 + 3600)
+	_feed_up()
+	main.game.money = 100
+	main.do_action("out")
+	main.choose(1)  # 旅馆
+	has_text(main.dialog.get_child(0).get_child(0).get_child(1).text, "不管饭")
+	main.choose(0)  # 住 2 小时
+	check(main.game.pet.in_hotel())
+	eq(main.game.money, 100 - 2 * Outings.HOTEL_PRICE)
+	eq(main.sitter_button.text, "接回来")
+	check(main.buttons.feed.disabled, "住旅馆不能喂")
+	check(main.out_button.disabled)
+	has_text(main.info.text, "住旅馆")
+	main.do_action("sitter")
+	check(not main.game.pet.in_hotel(), "接回来了")
+
+
+func test_choose_where_to_raise_the_next_egg() -> void:
+	_start()
+	_later(6 * 60)
+	main.game.places.append("lake")
+	main.game.pet.wants_leave = true
+	main.game.pet.answer_leave(true)
+	main.game._take_events()
+	main._refresh()
+	main.choose(0)  # 孵一颗新蛋
+	main.choose(0)  # 放宽
+	check(main.dialog != null, "有好几个地方, 先问在哪里养")
+	eq(main.dialog_buttons[1].text, "湖泊")
+	main.choose(1)
+	eq(main.game.pet.place, "lake")
+	has_text(main.info.text, "魔物蛋")
+	main.do_action("more")
+	var texts := []
+	for b in main.dialog_buttons:
+		texts.append(b.text)
+	check("搬家" in texts, "更多里有搬家")
+
+
 func test_buttons_off_after_the_end() -> void:
 	_start()
 	_later(6 * 60)
@@ -256,7 +327,7 @@ func test_buttons_off_after_the_end() -> void:
 
 func test_random_tapping() -> void:
 	_start()
-	var ids := ["feed", "lights", "play", "medicine", "clean", "status", "scold", "more", "sitter"]
+	var ids := ["feed", "lights", "play", "medicine", "clean", "status", "scold", "more", "sitter", "out"]
 	for i in 1500:
 		var r := rng.randf()
 		if main.dialog != null:

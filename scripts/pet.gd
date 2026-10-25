@@ -6,6 +6,7 @@ extends RefCounted
 ## advance 不是一分钟一分钟地算, 而是跳到下一件会发生的事 (心掉一颗、拉便便、该睡觉……), 离开好几天也算得很快。
 
 var difficulty := Rules.EASY
+var place := "grass"          # 住在哪 (第三版: grass 草原 / lake 湖泊 / sky 天空岛), 小孩长成少年时看这个
 var species := "egg"
 var stage := "egg"            # egg baby child teen adult; 结束了是 dead (死了) 或 gone (离开了)
 var born_at := 0              # 蛋出现的时候
@@ -50,6 +51,7 @@ var leave_ask_at := 0
 var sit_since := 0            # 托人照看从什么时候开始 (0 = 没托)
 var sit_used := 0             # sit_day 那天已经托了多少秒
 var sit_day := -1             # 本地日期 (从 1970 年算第几天)
+var hotel_until := 0          # 住旅馆约好什么时候来接 (0 = 没住旅馆; 第三版)
 
 var end_reason := ""          # neglect 没人照顾 / sick 病死 / old 老死 / left 离开了
 var ended_at := 0
@@ -57,11 +59,11 @@ var ended_at := 0
 var rng := RandomNumberGenerator.new()
 var events: Array = []        # 发生的事: {kind: grow / call / mistake / poop / sick / sleep / wake / leave_ask / end / sit_start / sit_end, ...}
 
-const SAVE_KEYS := ["difficulty", "species", "stage", "born_at", "hatched_at", "stage_at", "now", "tz",
+const SAVE_KEYS := ["difficulty", "place", "species", "stage", "born_at", "hatched_at", "stage_at", "now", "tz",
 	"hunger", "happy", "discipline", "weight", "poop", "poop_since", "next_poop", "next_hunger", "next_happy",
 	"sick", "sick_since", "medicine_left", "sick_times", "old_sick_age", "empty_since", "empty_mark",
 	"asleep", "lights", "call", "call_at", "recall_at", "next_tantrum", "mistakes", "mistakes_life",
-	"lifespan", "wants_leave", "leave_ask_at", "end_reason", "ended_at", "sit_since", "sit_used", "sit_day"]
+	"lifespan", "wants_leave", "leave_ask_at", "end_reason", "ended_at", "sit_since", "sit_used", "sit_day", "hotel_until"]
 
 
 static func create(t: int, diff: String, tz_offset := 0, rng_seed := 0) -> Pet:
@@ -139,6 +141,8 @@ func _next_due() -> int:
 		c.append(sick_since + Rules.SICK_DEATH[difficulty])
 	if sitting():
 		c.append(_sitter_end_time())
+	if in_hotel():
+		c.append(hotel_until)
 	var best := now + Rules.HOUR
 	for x in c:
 		if x > now and x < best:
@@ -154,7 +158,9 @@ func _update() -> void:
 	_sleep_or_wake()
 	if sitting() and now >= _sitter_end_time():
 		end_sitter(true)
-	if not sitting():  # 托人照看的时候, 照看的人管着, 下面这些都不会发生
+	if in_hotel():
+		_hotel_update()
+	if not away():  # 托人照看、住旅馆的时候, 有人管着, 下面这些都不会发生
 		if not asleep and stage != "egg":
 			_needs()
 		_settle()
@@ -242,8 +248,8 @@ func _sleep_or_wake() -> void:
 		if call != "":
 			call = ""  # 睡着了就不叫了 (没算失误)
 		events.append({"kind": "sleep"})
-		if sitting():
-			lights = false  # 照看的人会关灯
+		if away():
+			lights = false  # 照看的人、旅馆会关灯
 		if lights:
 			call = "lights"
 			call_at = now
@@ -369,13 +375,14 @@ func _end(reason: String) -> void:
 	if sitting():
 		sit_used += now - sit_since
 		sit_since = 0
+	hotel_until = 0
 	events.append({"kind": "end", "reason": reason})
 
 
 # ---------------------------------------------------------------- 玩家的动作 (先 advance 到现在再做)
 
 func can_act() -> bool:
-	return not is_over() and stage != "egg" and not sitting()
+	return not is_over() and stage != "egg" and not away()
 
 
 func feed_meal() -> String:
@@ -428,7 +435,7 @@ func feed_snack() -> String:
 
 
 func toggle_lights() -> String:
-	if is_over() or sitting():
+	if is_over() or away():
 		return "no"
 	lights = not lights
 	_settle()
@@ -533,7 +540,7 @@ func sitter_left() -> int:
 func start_sitter() -> String:
 	if is_over() or stage == "egg":
 		return "no"
-	if sitting():
+	if away():
 		return "already"
 	if sit_day != _local_day(now):
 		sit_day = _local_day(now)
@@ -575,6 +582,71 @@ func end_sitter(auto := false) -> String:
 	events.append({"kind": "sit_end", "auto": auto})
 	_settle()
 	return "ok"
+
+
+# ---------------------------------------------------------------- 旅馆 (第三版, 照拓麻歌子 On / Meets)
+# 花魔晶 (Game 收钱) 寄放几个小时: 不叫你、不算失误、不拉便便、不生病, 但旅馆不管饭 —
+# 饿了或不开心就被送回家; 约好的时间没去接, 它自己回来, 很生气 (开心 -2)。
+
+func in_hotel() -> bool:
+	return hotel_until > 0
+
+
+## 托人照看或住旅馆, 不在家
+func away() -> bool:
+	return sitting() or in_hotel()
+
+
+func start_hotel(until: int) -> String:
+	if is_over() or stage == "egg":
+		return "no"
+	if away():
+		return "already"
+	if until <= now:
+		return "no"
+	if hunger == 0 or happy == 0:
+		return "hungry"  # 旅馆不管饭: 先喂饱、哄开心再去 (On / Meets 也是这样)
+	hotel_until = until
+	call = ""
+	poop = 0  # 旅馆帮忙打扫
+	poop_since = 0
+	if asleep:
+		lights = false
+	events.append({"kind": "hotel_start"})
+	return "ok"
+
+
+## 接回来 / 被送回来: reason = pickup 你去接 / hungry 饿了或不开心被送回来 / late 约好的时间没去接
+func end_hotel(reason := "pickup") -> String:
+	if not in_hotel():
+		return "no"
+	hotel_until = 0
+	if reason == "late":
+		happy = maxi(0, happy - 2)
+	next_poop = now + Rules.POOP_EVERY[stage]
+	next_tantrum = maxi(next_tantrum, now + Rules.HOUR)
+	next_hunger = maxi(next_hunger, now + 60)
+	next_happy = maxi(next_happy, now + 60)
+	recall_at = now
+	events.append({"kind": "hotel_end", "reason": reason})
+	_settle()
+	return "ok"
+
+
+## 住旅馆时: 心照样掉 (旅馆不管饭), 空了就送回家; 到时间没接就自己回来
+func _hotel_update() -> void:
+	if not asleep:
+		var drop := Rules.heart_drop(stage, difficulty)
+		if now >= next_hunger:
+			hunger = maxi(0, hunger - 1)
+			next_hunger = now + drop
+		if now >= next_happy:
+			happy = maxi(0, happy - 1)
+			next_happy = now + drop
+	if hunger == 0 or happy == 0:
+		end_hotel("hungry")
+	elif now >= hotel_until:
+		end_hotel("late")
 
 
 # ---------------------------------------------------------------- 存档

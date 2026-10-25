@@ -20,6 +20,17 @@ var owned: Array = []       # 买下来一直有的: 玩具、衣服配饰、房
 var equip := {}             # 装扮: 地方 (hat neck wall rug furniture decor) -> 代号
 var toy_used := {}          # 玩具上次玩的时间 (Unix 秒)
 
+# 第三版: 住的地方、出门
+var places: Array = ["grass"]   # 解锁了的住的地方 (养大一只成年就开一个新的, 学 Paradise)
+var outings: Array = Outings.START.duplicate()   # 解锁了的出门地点
+var out_at := {}            # 每个地方上次有收获的时间
+var stats := {}             # 解锁要数的东西: park 去公园几次, apples 吃了几个苹果
+var rng := RandomNumberGenerator.new()
+
+
+func _init() -> void:
+	rng.randomize()
+
 
 ## 现在几点 (Unix 秒, 加上调试快进的)
 func clock() -> int:
@@ -31,11 +42,12 @@ func _refresh_tz() -> void:
 		tz = int(Time.get_time_zone_from_system().get("bias", 0)) * 60
 
 
-func new_egg(diff: String, t := -1) -> void:
+func new_egg(diff: String, t := -1, place := "grass") -> void:
 	_refresh_tz()
 	difficulty = diff
 	var at := clock() if t < 0 else t
 	pet = Pet.create(at, diff, tz, at ^ 0x5eed + history.size())
+	pet.place = place if place in places else "grass"
 	messages.append({"text": "一颗魔物蛋出现了! 等一会儿就会孵出来。", "rank": 4})
 
 
@@ -54,6 +66,8 @@ func _take_events() -> void:
 		match e.kind:
 			"grow":
 				dex[e.id] = int(dex.get(e.id, 0)) + 1
+				if Species.DATA[e.id].stage == "adult":
+					_unlock_places()
 			"end":
 				history.append({"species": pet.species, "reason": e.reason, "age": pet.age(),
 					"difficulty": pet.difficulty, "ended_at": pet.ended_at})
@@ -64,8 +78,8 @@ func _take_events() -> void:
 
 
 ## 同时发生好几件事, 画面只显示最要紧的一条
-const RANK := {"end": 5, "grow": 4, "leave_ask": 4, "sit_end": 3, "sick": 3, "mistake": 3, "call": 2, "poop": 1,
-	"sleep": 1, "wake": 1, "sit_start": 1}
+const RANK := {"end": 5, "grow": 4, "leave_ask": 4, "sit_end": 3, "hotel_end": 3, "sick": 3, "mistake": 3, "call": 2,
+	"poop": 1, "sleep": 1, "wake": 1, "sit_start": 1, "hotel_start": 1}
 
 
 func describe(e: Dictionary) -> String:
@@ -91,6 +105,8 @@ func describe(e: Dictionary) -> String:
 			return "它长大了, 说想出去闯荡……"
 		"sit_end":
 			return "今天托人照看的时间到了, 它被送回来了" if e.get("auto", false) else ""
+		"hotel_end":
+			return {"hungry": "它饿了或不开心, 旅馆把它送回家了", "late": "约好的时间没去接, 它自己回来了, 很生气 (开心 -2)"}.get(e.reason, "")
 		"end":
 			return ending_text(e.reason)
 	return ""
@@ -132,6 +148,9 @@ func act(what: String, arg: Variant = null) -> String:
 			else:
 				r = pet.eat(Items.DATA[arg])
 				if r == "ok":
+					if arg == "apple":
+						stats["apples"] = int(stats.get("apples", 0)) + 1
+						_unlock_outing("lakeside", int(stats.apples) >= 5)
 					items[arg] = int(items[arg]) - 1
 					if items[arg] <= 0:
 						items.erase(arg)
@@ -158,7 +177,10 @@ func act(what: String, arg: Variant = null) -> String:
 			r = pet.scold()
 			text = {"good": "管教了它, 它乖了一点", "sad": "它没闹, 被骂了很委屈 (不开心 -1)"}.get(r, "")
 		"sitter":
-			if pet.sitting():
+			if pet.in_hotel():
+				r = pet.end_hotel("pickup")
+				text = "从旅馆接回来了"
+			elif pet.sitting():
 				r = pet.end_sitter()
 				text = "接回来了, 照看的人把它喂得饱饱的"
 			else:
@@ -179,6 +201,135 @@ func act(what: String, arg: Variant = null) -> String:
 		text = {"asleep": "它在睡觉, 别吵它", "sick": "它生病了, 不想玩", "no": no}.get(r, "")
 	_take_events()
 	return text
+
+
+# ---------------------------------------------------------------- 第三版: 住的地方
+
+## 养大一只成年就打开下一个地方 (学 Paradise「照顾着就解锁」; 具体几只是我们定的)
+func _unlock_places() -> void:
+	var adults := 0
+	for id in dex:
+		if Species.DATA.has(id) and Species.DATA[id].stage == "adult":
+			adults += int(dex[id])
+	for i in Species.PLACE_ORDER.size():
+		var place: String = Species.PLACE_ORDER[i]
+		if adults >= i and not place in places:
+			places.append(place)
+			messages.append({"text": "新的地方「%s」打开了! 下一颗蛋可以在那里养, 会长成那里的魔物" % Species.PLACES[place].name, "rank": 5})
+
+
+## 搬家: 小孩长成少年时住在哪, 就长成哪里的魔物; 长大以后搬家只换风景
+func move(place: String) -> String:
+	if pet == null or pet.is_over() or not place in places:
+		return "no"
+	pet.place = place
+	return "ok" if pet.stage in ["egg", "baby", "child"] else "grown"
+
+
+# ---------------------------------------------------------------- 第三版: 出门
+
+func _unlock_outing(id: String, ok: bool) -> void:
+	if ok and not id in outings:
+		outings.append(id)
+		messages.append({"text": "新的地方「%s」可以去了!" % Outings.info(id).name, "rank": 5})
+
+
+## 现在能不能出门: ok / no / small 太小 / asleep / sick / away
+func can_go_out() -> String:
+	if pet == null or pet.is_over() or pet.stage == "egg":
+		return "no"
+	if pet.stage == "baby":
+		return "small"  # 照 On / Meets: 长到小孩才能出门
+	if pet.away():
+		return "away"
+	if pet.asleep:
+		return "asleep"
+	if pet.sick:
+		return "sick"
+	return "ok"
+
+
+## 出门逛一趟 (马上回来): 回 {text 说什么, npc 碰到的魔物, item 带回来的东西}
+func go_out(id: String) -> Dictionary:
+	tick()
+	var r := can_go_out()
+	if r != "ok":
+		return {"text": {"small": "还太小了, 长到小孩才能出门", "asleep": "它在睡觉, 别吵它", "sick": "它生病了, 先治好吧",
+			"away": "它不在家"}.get(r, ""), "npc": "", "item": ""}
+	if not id in outings:
+		return {"text": "还没解锁: " + Outings.info(id).unlock, "npc": "", "item": ""}
+	var now := clock()
+	var local_hour := posmod(floori(float(now + tz) / 3600.0), 24)
+	_unlock_outing("night", local_hour >= 19 and local_hour < 21)
+	var fresh := now - int(out_at.get(id, -Outings.COOLDOWN)) >= Outings.COOLDOWN
+	var out := {"text": "", "npc": "", "item": "", "ok": true}
+	match id:
+		"park":
+			stats["park"] = int(stats.get("park", 0)) + 1
+			_unlock_outing("forest", int(stats.park) >= 5)
+			var others := []
+			for place in places:
+				for k in ["teen_good", "teen_bad", "best", "good", "mid", "low", "bad1", "bad2"]:
+					var sp: String = Species.PLACES[place][k]
+					if sp != pet.species:
+						others.append(sp)
+			out.npc = others[rng.randi() % others.size()]
+			if fresh:
+				pet.happy = mini(4, pet.happy + 1)
+				out.text = "公园里碰到「%s」, 一起玩, 开心 +1" % Species.name_of(out.npc)
+			else:
+				out.text = "公园里碰到「%s」, 打了个招呼" % Species.name_of(out.npc)
+		"forest":
+			if not fresh:
+				out.text = "在森林里转了一圈, 这次没捡到东西"
+			elif rng.randf() < 0.6 and int(items.get("apple", 0)) < Items.MAX_STACK:
+				items["apple"] = int(items.get("apple", 0)) + 1
+				out.item = "apple"
+				out.text = "在森林里捡到一个苹果!"
+			else:
+				var m := rng.randi_range(5, 10)
+				money += m
+				out.item = "coin"
+				out.text = "在森林里捡到魔晶 %d!" % m
+		"lakeside":
+			if fresh:
+				var m := rng.randi_range(8, 15)
+				money += m
+				out.item = "coin"
+				out.text = "在湖边钓鱼, 钓到魔晶 %d!" % m
+			else:
+				out.text = "在湖边钓了一会儿鱼, 这次什么都没钓到"
+		"night":
+			if fresh:
+				var food: String = ["cake", "icecream"][rng.randi() % 2]
+				if int(items.get(food, 0)) < Items.MAX_STACK:
+					items[food] = int(items.get(food, 0)) + 1
+				out.item = food
+				out.text = "逛夜市, 小摊送了一个%s!" % Items.name_of(food)
+			else:
+				out.text = "逛了逛夜市, 好热闹"
+	if fresh and id != "hotel":
+		out_at[id] = now
+	pet._settle()
+	_take_events()
+	last_result = "ok"
+	return out
+
+
+## 住旅馆几个小时: ok / poor 钱不够 / 别的 (不能出门的原因)
+func hotel(hours: int) -> String:
+	tick()
+	var r := can_go_out()
+	if r != "ok" and r != "asleep":
+		return r
+	var price := hours * Outings.HOTEL_PRICE
+	if money < price:
+		return "poor"
+	r = pet.start_hotel(clock() + hours * Rules.HOUR)
+	if r == "ok":
+		money -= price
+	_take_events()
+	return r
 
 
 ## 玩具还要多久才能再玩 (秒, 0 = 现在就能玩)
@@ -239,9 +390,9 @@ func take_messages() -> Array:
 # ---------------------------------------------------------------- 存档
 
 func to_dict() -> Dictionary:
-	return {"version": 2, "pet": pet.to_dict() if pet != null else null, "dex": dex, "history": history,
+	return {"version": 3, "pet": pet.to_dict() if pet != null else null, "dex": dex, "history": history,
 		"offset": offset, "difficulty": difficulty, "money": money, "items": items, "owned": owned, "equip": equip,
-		"toy_used": toy_used}
+		"toy_used": toy_used, "places": places, "outings": outings, "out_at": out_at, "stats": stats}
 
 
 static func from_dict(d: Dictionary) -> Game:
@@ -270,6 +421,19 @@ static func from_dict(d: Dictionary) -> Game:
 			g.equip[k] = str(d.equip[k])
 	for k in d.get("toy_used", {}):
 		g.toy_used[k] = int(d.toy_used[k])
+	# 第三版加的
+	for k in d.get("places", []):
+		if Species.PLACES.has(k) and not k in g.places:
+			g.places.append(str(k))
+	for k in d.get("outings", []):
+		if not Outings.info(str(k)).is_empty() and not k in g.outings:
+			g.outings.append(str(k))
+	for k in d.get("out_at", {}):
+		g.out_at[k] = int(d.out_at[k])
+	for k in d.get("stats", {}):
+		g.stats[k] = int(d.stats[k])
+	g._unlock_places()  # 以前版本养大过成年的, 直接打开新地方
+	g.messages.clear()
 	return g
 
 

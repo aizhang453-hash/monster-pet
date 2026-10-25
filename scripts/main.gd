@@ -10,7 +10,8 @@ const ACTIONS := [
 const SHELL_RECT := Rect2(30, 160, 660, 640)
 const LCD_RECT := Rect2(72, 270, 576, 384)
 const CALL_LIGHT := Vector2(360, 222)
-const SITTER_RECT := Rect2(200, 688, 320, 80)
+const OUT_RECT := Rect2(84, 688, 268, 80)
+const SITTER_RECT := Rect2(368, 688, 268, 80)
 
 var game: Game
 var screen: ScreenView
@@ -21,6 +22,7 @@ var grid: GridContainer
 var play_bar: VBoxContainer       # 玩小游戏时, 下面换成这个 (小游戏的按钮 + 「不玩了」)
 var play_row: HBoxContainer
 var sitter_button: Button
+var out_button: Button
 var dialog: Control = null       # 现在开着的弹窗
 var dialog_buttons: Array = []   # 弹窗里的按钮 (测试按它们)
 var allow_quit := true
@@ -58,7 +60,7 @@ func _build() -> void:
 	info.position = Vector2(0, 98)
 	info.size = Vector2(720, 44)
 	info.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	info.add_theme_font_size_override("font_size", 28)
+	info.add_theme_font_size_override("font_size", 26)
 	info.add_theme_color_override("font_color", Look.TEXT_DIM)
 	add_child(info)
 
@@ -77,6 +79,13 @@ func _build() -> void:
 	sitter_button.add_theme_font_size_override("font_size", 30)
 	sitter_button.pressed.connect(do_action.bind("sitter"))
 	add_child(sitter_button)
+	out_button = Button.new()  # 第三版: 出门
+	out_button.text = "出门"
+	out_button.position = OUT_RECT.position
+	out_button.size = OUT_RECT.size
+	out_button.add_theme_font_size_override("font_size", 30)
+	out_button.pressed.connect(do_action.bind("out"))
+	add_child(out_button)
 
 	message = Label.new()
 	message.position = Vector2(40, 812)
@@ -182,7 +191,7 @@ func _refresh() -> void:
 	if Time.get_ticks_msec() / 1000.0 > _msg_until:
 		message.text = _hint()
 	var playing := screen.mode == "play"
-	var away := pet != null and pet.sitting()
+	var away := pet != null and pet.away()
 	for id in buttons:
 		var b: Button = buttons[id]
 		b.disabled = pet == null or (pet.is_over() and id != "more" and id != "status") \
@@ -190,6 +199,7 @@ func _refresh() -> void:
 			or (away and id not in ["status", "more"])
 	sitter_button.text = "接回来" if away else "托人照看"
 	sitter_button.disabled = pet == null or pet.is_over() or pet.stage == "egg" or playing
+	out_button.disabled = pet == null or pet.is_over() or pet.stage == "egg" or playing or away
 	grid.visible = not playing
 	play_bar.visible = playing
 	if pet == null or dialog != null:
@@ -212,9 +222,12 @@ func _info_text() -> String:
 		return "魔物蛋 · 大约 %d 分钟后孵出来 · %s" % [ceili(left / 60.0), diff]
 	if pet.is_over():
 		return "%s · %s" % [pet.display_name(), "离开了" if pet.stage == "gone" else "已经不在了"]
+	var where: String = Species.PLACES[pet.place].name
 	if pet.sitting():
-		return "%s · %d 岁 · 托人照看中 · 魔晶 %d" % [pet.display_name(), pet.age(), game.money]
-	return "%s · %d 岁 · %s · 魔晶 %d" % [pet.display_name(), pet.age(), diff, game.money]
+		where = "托人照看中"
+	elif pet.in_hotel():
+		where = "住旅馆"
+	return "%s · %d 岁 · %s · %s · 魔晶 %d" % [pet.display_name(), pet.age(), where, diff, game.money]
 
 
 ## 没有新消息的时候, 下面那行显示现在该做什么
@@ -224,6 +237,8 @@ func _hint() -> String:
 		return ""
 	if pet.sitting():
 		return "托给别人照看了, 还能照看 %s" % Game.sitter_text(pet.sitter_left())
+	if pet.in_hotel():
+		return "住在旅馆, %s以后要去接 (晚了它会生气)" % Game.sitter_text(maxi(0, pet.hotel_until - pet.now))
 	if pet.call != "":
 		return game.describe({"kind": "call", "what": pet.call})
 	if pet.sick:
@@ -287,7 +302,79 @@ func do_action(id: String) -> void:
 			_show_menu()
 		"sitter":
 			text = game.act("sitter")
+		"out":
+			_ask_out()
 	_after(text)
+
+
+# ---------------------------------------------------------------- 第三版: 出门、旅馆、住的地方
+
+func _ask_out() -> void:
+	var r := game.can_go_out()
+	if r != "ok":
+		_say({"small": "还太小了, 长到小孩才能出门", "asleep": "它在睡觉, 别吵它", "sick": "它生病了, 先治好吧",
+			"away": "它不在家"}.get(r, ""))
+		return
+	var options := []
+	var lines := []
+	for o in Outings.LIST:
+		if o.id in game.outings:
+			options.append([o.name, (_ask_hotel if o.id == "hotel" else go_out.bind(o.id))])
+			lines.append("%s: %s" % [o.name, o.help])
+		else:
+			lines.append("？？？: 还没解锁 (%s)" % o.unlock)
+	options.append(["算了", close_dialog])
+	_dialog("去哪儿?", "\n".join(lines), options)
+
+
+func go_out(id: String) -> void:
+	close_dialog()
+	var out := game.go_out(id)
+	if out.get("ok", false):
+		screen.show_outing(id, out.npc, out.item)
+	_after(out.text)
+
+
+func _ask_hotel() -> void:
+	var options := []
+	for h in Outings.HOTEL_HOURS:
+		var price: int = h * Outings.HOTEL_PRICE
+		options.append(["住 %d 小时 (%d 魔晶)" % [h, price], _hotel.bind(h)])
+	options.append(["算了", close_dialog])
+	_dialog("旅馆", "你有魔晶 %d。\n旅馆不叫你、不算照顾失误, 但不管饭: 饿了或不开心就会被送回家, 先喂饱、哄开心再去。\n" % game.money +
+		"约好的时间要去接 (按「接回来」), 晚了它会自己回来, 很生气。", options)
+
+
+func _hotel(hours: int) -> void:
+	close_dialog()
+	var r := game.hotel(hours)
+	_after({"ok": "住进旅馆了, %d 小时以后记得去接" % hours, "poor": "魔晶不够",
+		"hungry": "它饿着或不开心, 旅馆不收, 先喂饱、哄开心再去"}.get(r, "现在去不了旅馆"))
+
+
+## 在哪里养 (有好几个地方的时候, 孵新蛋先问)
+func _ask_place(diff: String) -> void:
+	var options := []
+	for place in Species.PLACE_ORDER:
+		if place in game.places:
+			options.append([Species.PLACES[place].name, _new_egg.bind(diff, place)])
+	_dialog("在哪里养?", "小孩长成少年的时候住在哪, 就会长成那里的魔物。宝宝和小孩大家都一样。", options)
+
+
+func _ask_move() -> void:
+	var options := []
+	for place in Species.PLACE_ORDER:
+		if place in game.places:
+			var here: bool = game.pet.place == place
+			options.append([Species.PLACES[place].name + (" (现在住这里)" if here else ""), _move.bind(place)])
+	options.append(["算了", close_dialog])
+	_dialog("搬家", "小孩长成少年的时候住在哪, 就会长成那里的魔物。长成少年以后搬家只换风景。", options)
+
+
+func _move(place: String) -> void:
+	close_dialog()
+	var r := game.move(place)
+	_after({"ok": "搬到%s了" % Species.PLACES[place].name, "grown": "搬到%s了 (已经长大了, 只换风景)" % Species.PLACES[place].name}.get(r, ""))
 
 
 ## 做完一个动作: 存档、刷新, 再显示这个动作的结果 (比动作顺带引起的小事要紧, 比如喂完饭它又说不开心)
@@ -459,12 +546,19 @@ func _ask_difficulty() -> void:
 		"原版严格 (挑战): 跟 1996 年的原版一样。它叫你以后 15 分钟没理就算失误 " +
 		"(不是要你每 15 分钟看一次), 成年以后失误 5 次会死, 一个阶段病 3 次也会死。最好每小时看一次。隐藏的魔物只有这个难度养得出来。\n\n" +
 		"两种都能「托人照看」: 上学、上班的时候托给别人, 每天最多 %s。" % Game.sitter_text(Rules.SITTER_PER_DAY),
-		[["放宽 (推荐)", _new_egg.bind(Rules.EASY)], ["原版严格 (挑战)", _new_egg.bind(Rules.STRICT)]])
+		[["放宽 (推荐)", _choose_difficulty.bind(Rules.EASY)], ["原版严格 (挑战)", _choose_difficulty.bind(Rules.STRICT)]])
 
 
-func _new_egg(diff: String) -> void:
+func _choose_difficulty(diff: String) -> void:
+	if game.places.size() > 1:
+		_ask_place(diff)
+	else:
+		_new_egg(diff)
+
+
+func _new_egg(diff: String, place := "grass") -> void:
 	close_dialog()
-	game.new_egg(diff)
+	game.new_egg(diff, -1, place)
 	screen.mode = "pet"
 	screen.pet_x = 16.0
 	_shown_end = false
@@ -494,6 +588,8 @@ func _answer_leave(let_go: bool) -> void:
 
 func _show_menu() -> void:
 	var options := [["商店", _show_shop], ["装扮", _show_dress], ["图鉴", _show_dex], ["怎么玩", _show_help]]
+	if game.places.size() > 1 and game.pet != null and not game.pet.is_over():
+		options.insert(2, ["搬家", _ask_move])
 	if game.pet != null and game.pet.is_over():
 		options.append(["孵一颗新蛋", _ask_difficulty])
 	if OS.is_debug_build():
@@ -614,34 +710,51 @@ func _set_equip(slot: String, id: String) -> void:
 
 
 func _show_dex() -> void:
-	var g := GridContainer.new()
-	g.columns = 3
-	g.add_theme_constant_override("h_separation", 16)
-	g.add_theme_constant_override("v_separation", 10)
+	var list := VBoxContainer.new()
+	list.add_theme_constant_override("separation", 8)
 	var found := 0
-	for id in Species.ORDER:
-		var seen := game.dex.has(id)
-		if seen:
-			found += 1
-		var cell := VBoxContainer.new()
-		cell.custom_minimum_size = Vector2(190, 0)
-		var pic := TextureRect.new()
-		pic.texture = Art.texture(id, 5, Color.WHITE if seen else Color(0.15, 0.13, 0.2))
-		pic.stretch_mode = TextureRect.STRETCH_KEEP_CENTERED
-		pic.custom_minimum_size = Vector2(80, 80)
-		cell.add_child(pic)
-		var name_label := Label.new()
-		name_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		name_label.add_theme_font_size_override("font_size", 24)
-		if seen:
-			name_label.text = "%s ×%d" % [Species.name_of(id), game.dex[id]]
-		else:
-			name_label.text = "？？？" + (" (隐藏)" if Species.DATA[id].get("secret", false) else "")
-			name_label.add_theme_color_override("font_color", Look.TEXT_DIM)
-		cell.add_child(name_label)
-		g.add_child(cell)
-	_dialog("图鉴 %d/%d" % [found, Species.ORDER.size()], "一共养过 %d 只。隐藏的那一种只有「原版严格」养得出来。" %
-		game.history.size(), [["关闭", close_dialog]], g)
+	var groups := [["宝宝和小孩", ["tuanzi", "jianjiao"], ""]]
+	for place in Species.PLACE_ORDER:
+		var d: Dictionary = Species.PLACES[place]
+		groups.append([d.name, [d.teen_good, d.teen_bad, d.best, d.good, d.mid, d.low, d.bad1, d.bad2, d.secret], place])
+	for grp in groups:
+		var head := Label.new()
+		head.text = grp[0] + ("" if grp[2] == "" or grp[2] in game.places else " (还没去过)")
+		head.add_theme_font_size_override("font_size", 28)
+		head.add_theme_color_override("font_color", Look.SHELL_LIGHT)
+		list.add_child(head)
+		var g := GridContainer.new()
+		g.columns = 3
+		g.add_theme_constant_override("h_separation", 16)
+		g.add_theme_constant_override("v_separation", 10)
+		for id in grp[1]:
+			var seen := game.dex.has(id)
+			if seen:
+				found += 1
+			var cell := VBoxContainer.new()
+			cell.custom_minimum_size = Vector2(186, 0)
+			var pic := TextureRect.new()
+			pic.texture = Art.texture(id, 5, Color.WHITE if seen else Color(0.15, 0.13, 0.2))
+			pic.stretch_mode = TextureRect.STRETCH_KEEP_CENTERED
+			pic.custom_minimum_size = Vector2(80, 80)
+			cell.add_child(pic)
+			var name_label := Label.new()
+			name_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+			name_label.add_theme_font_size_override("font_size", 22)
+			if seen:
+				name_label.text = "%s ×%d" % [Species.name_of(id), game.dex[id]]
+			else:
+				name_label.text = "？？？" + (" (隐藏)" if Species.DATA[id].get("secret", false) else "")
+				name_label.add_theme_color_override("font_color", Look.TEXT_DIM)
+			cell.add_child(name_label)
+			g.add_child(cell)
+		list.add_child(g)
+	var scroll := ScrollContainer.new()
+	scroll.custom_minimum_size = Vector2(600, 760)
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	scroll.add_child(list)
+	_dialog("图鉴 %d/%d" % [found, Species.ORDER.size()], "一共养过 %d 只。隐藏的只有「原版严格」养得出来。" %
+		game.history.size(), [["关闭", close_dialog]], scroll)
 
 
 func _show_help() -> void:
@@ -651,6 +764,8 @@ func _show_help() -> void:
 		"玩耍: 玩小游戏 (长大了会多几种), 赢了它开心, 还能赚魔晶; 买了玩具也能陪它玩\n" +
 		"吃药: 头上有骷髅就是病了\n打扫: 便便放久了会生病\n管教: 它无理取闹的时候管一管\n开关灯: 它睡着了要关灯\n" +
 		"托人照看: 上学、上班的时候托给别人, 不叫你、不算失误, 每天最多 %s\n" % Game.sitter_text(Rules.SITTER_PER_DAY) +
-		"更多: 商店 (用魔晶买东西)、装扮 (帽子、领结、房间布置, 只是好看)、图鉴\n\n" +
+		"更多: 商店 (用魔晶买东西)、装扮 (帽子、领结、房间布置, 只是好看)、图鉴、搬家\n" +
+		"出门: 小孩起能去公园、森林、湖边、夜市逛 (有的要先解锁), 还能花魔晶住旅馆\n" +
+		"住的地方: 草原、湖泊、天空岛各有一套魔物, 养大一只成年就打开一个新地方\n\n" +
 		"它跟着真实的时间长大: 一天长一岁。长大以后它会想出去闯荡, 可以放它走, 也可以留它到老。",
 		[["知道了", close_dialog]])

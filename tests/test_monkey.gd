@@ -5,7 +5,7 @@ extends TestCase
 const T0 := Helpers.T0
 const PETS := 2000
 const ACTIONS := ["meal", "snack", "lights", "game", "medicine", "clean", "scold", "leave_yes", "leave_no", "sit", "unsit",
-	"food", "toy", "nothing"]
+	"food", "toy", "hotel", "unhotel", "move", "nothing"]
 
 var rng := RandomNumberGenerator.new()
 var endings := {}
@@ -58,6 +58,12 @@ func _do(p: Pet, what: String) -> void:
 			p.eat(Items.DATA[Items.of_kinds(["food"])[rng.randi() % 4]])
 		"toy":
 			p.play_toy()
+		"hotel":
+			p.start_hotel(p.now + rng.randi_range(1, 8) * 3600)
+		"unhotel":
+			p.end_hotel("pickup")
+		"move":
+			p.place = Species.PLACE_ORDER[rng.randi() % 3]
 		"medicine":
 			p.give_medicine()
 		"clean":
@@ -95,14 +101,20 @@ func _check(p: Pet, last_now: int) -> void:
 	if p.is_over():
 		check(p.end_reason in ["neglect", "sick", "old", "left"], "%s 结局 %s" % [where, p.end_reason])
 		check(p.call == "" and not p.wants_leave, "%s 结束了就不叫了" % where)
-	if p.sitting():
-		check(p.call == "" and not p.is_over(), "%s 托人照看的时候不叫你" % where)
+	if p.away():
+		check(p.call == "" and not p.is_over(), "%s 托人照看、住旅馆的时候不叫你" % where)
+		check(not (p.sitting() and p.in_hotel()), "%s 不会又托人又住旅馆" % where)
+	if p.in_hotel():
+		check(p.hunger > 0 and p.happy > 0, "%s 住旅馆饿了就送回家" % where)
+	if p.stage in ["teen", "adult"]:
+		check(Species.place_of(p.species) != "", "%s 少年和成年属于一个地方" % where)
 		check(p.sitter_left() <= Rules.SITTER_PER_DAY, "%s 照看最多 10 小时" % where)
 	check(p.sit_used >= 0 and p.sit_used <= Rules.SITTER_PER_DAY, "%s 今天托了 %d 秒" % [where, p.sit_used])
 	if p.asleep:
 		check(p.is_sleep_time(p.now), "%s 只在该睡的时候睡" % where)
 		check(p.call == "" or p.call == "lights", "%s 睡着时只会因为没关灯叫你" % where)
 	for e in p.events:
-		check(e.kind in ["grow", "call", "mistake", "poop", "sick", "sleep", "wake", "leave_ask", "end", "sit_start", "sit_end"],
+		check(e.kind in ["grow", "call", "mistake", "poop", "sick", "sleep", "wake", "leave_ask", "end", "sit_start", "sit_end",
+				"hotel_start", "hotel_end"],
 			"%s 事件 %s" % [where, e.kind])
 	p.events.clear()

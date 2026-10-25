@@ -167,5 +167,48 @@ func _run() -> void:
 		main.screen.minigame.step(0.05)
 	await _shot("26_记颜色")
 	main.quit_play()
+	# 第三版: 出门、旅馆、住的地方
+	for id in ["crown", "scarf", "wall_pink", "rug_grass", "plant", "painting"]:
+		main.game.set_equip(Items.kind_of(id), "")
+	main.game.places = ["grass", "lake", "sky"]
+	main.game.outings = ["park", "forest", "lakeside", "night", "hotel"]
+	q.place = "lake"
+	q.species = "hailong"
+	q.hunger = 4
+	q.happy = 4
+	main._refresh()
+	await _shot("27_湖泊的海龙")
+	main.do_action("out")
+	await _shot("28_去哪儿")
+	main.close_dialog()
+	main.game.rng.seed = 3
+	main.go_out("park")
+	main.screen.t = main.screen.out_until - 1.0
+	await _shot("29_公园")
+	main.screen.mode = "pet"
+	main.go_out("night")
+	main.screen.t = main.screen.out_until - 1.0
+	await _shot("30_夜市")
+	main.screen.mode = "pet"
+	q.place = "sky"
+	q.species = "fenghuang"
+	main._refresh()
+	await _shot("31_天空岛的彩虹凤凰")
+	main.game.money = 100
+	main.game.hotel(4)
+	main._refresh()
+	await _shot("32_住旅馆")
+	main.do_action("sitter")
+	for id in Species.ORDER:
+		main.game.dex[id] = 1
+	main.game.dex.erase("yuejing")
+	main.game.dex.erase("fenghuang")
+	main.do_action("more")
+	main.choose(3)  # 图鉴 (商店、装扮、搬家、图鉴……)
+	await _shot("33_图鉴")
+	main.close_dialog()
+	main._ask_place(Rules.EASY)
+	await _shot("34_在哪里养")
+	main.close_dialog()
 	SaveGame.erase()
 	quit()

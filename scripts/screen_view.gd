@@ -17,6 +17,11 @@ var effect := ""             # 刚做完动作, 旁边冒一个小图标 (meal s
 var effect_until := 0.0
 var status_until := 0.0
 var minigame: MiniGame = null
+# 第三版: 出门的画面 (几秒钟)
+var out_id := ""
+var out_npc := ""
+var out_item := ""
+var out_until := 0.0
 var _move_timer := 0.0
 var _rng := RandomNumberGenerator.new()
 
@@ -28,6 +33,8 @@ func px() -> float:
 func _process(delta: float) -> void:
 	t += delta
 	if mode == "status" and t > status_until:
+		mode = "pet"
+	if mode == "out" and t > out_until:
 		mode = "pet"
 	if mode == "play" and minigame != null:
 		minigame.step(delta)
@@ -62,6 +69,14 @@ func show_status() -> void:
 	status_until = t + 6.0
 
 
+func show_outing(id: String, npc: String, item: String) -> void:
+	out_id = id
+	out_npc = npc
+	out_item = item
+	out_until = t + 3.5
+	mode = "out"
+
+
 func start_play(id: String, rng_seed := 0) -> void:
 	minigame = MiniGames.make(id, rng_seed)
 	mode = "play"
@@ -79,8 +94,12 @@ func _draw() -> void:
 	var pet := game.pet if game != null else null
 	var dark := pet != null and not pet.lights and not pet.is_over() and mode == "pet"
 	var bg := Look.LCD
+	if pet != null and Species.PLACE_LOOK.has(pet.place):
+		bg = Color(Species.PLACE_LOOK[pet.place][0])  # 第三版: 住的地方不同, 底色不同
 	if game != null and game.equip.has("wall"):
 		bg = Color(Items.DATA[game.equip.wall].color)
+	if mode == "out" and Outings.LOOK.has(out_id):
+		bg = Color(Outings.LOOK[out_id][0])
 	draw_rect(Rect2(Vector2.ZERO, size), Look.LCD_DARK if dark else bg)
 	if pet == null:
 		return
@@ -89,6 +108,8 @@ func _draw() -> void:
 			_draw_status(p, pet)
 		"play":
 			_draw_play(p, pet)
+		"out":
+			_draw_out(p, pet)
 		_:
 			_draw_pet(p, pet, dark)
 
@@ -101,8 +122,13 @@ func _text(pos: Vector2, s: String, p: float, color := Look.INK, scale := 4.2) -
 func _draw_room(p: float, tint: Color) -> void:
 	if game.equip.has("decor"):
 		Art.draw(self, Items.ICON[game.equip.decor], Vector2(3, 3) * p, p, false, tint)
+	var ground := ""
 	if game.equip.has("rug"):
-		draw_rect(Rect2(Vector2(0, 30) * p, Vector2(W, 2) * p), Color(Items.DATA[game.equip.rug].color) * tint)
+		ground = Items.DATA[game.equip.rug].color
+	elif Species.PLACE_LOOK.has(game.pet.place):
+		ground = Species.PLACE_LOOK[game.pet.place][1]  # 没铺地毯的话, 地面是住的地方的颜色
+	if ground != "":
+		draw_rect(Rect2(Vector2(0, 30) * p, Vector2(W, 2) * p), Color(ground) * tint)
 	if game.equip.has("furniture"):
 		var id: String = game.equip.furniture
 		var s := Art.size_of(Items.ICON[id])
@@ -142,6 +168,13 @@ func _draw_pet(p: float, pet: Pet, dark: bool) -> void:
 		_text(Vector2(23, 13), "托人照看中", p, Look.INK, 3.6)
 		_text(Vector2(23, 21), "还剩", p, Look.INK, 3.2)
 		_text(Vector2(23, 28), Game.sitter_text(pet.sitter_left()), p, Look.INK, 3.2)
+		return
+	if pet.in_hotel():
+		# 住旅馆: 旅馆的楼
+		Art.draw(self, "hotel", Vector2(4, 6) * p, p * 2)
+		_text(Vector2(24, 13), "住旅馆", p, Look.INK, 3.6)
+		_text(Vector2(24, 21), "去接还剩", p, Look.INK, 3.2)
+		_text(Vector2(24, 28), Game.sitter_text(maxi(0, pet.hotel_until - pet.now)), p, Look.INK, 3.2)
 		return
 	_draw_room(p, tint)
 	if pet.stage == "egg":
@@ -192,6 +225,22 @@ func _draw_status(p: float, pet: Pet) -> void:
 	for b in 4:
 		Art.draw(self, "block" if b < pet.discipline else "block_empty", Vector2(19 + b * 7, 19) * p, p)
 	_text(Vector2(2, 31), "%d 岁   %d 克" % [pet.age(), pet.weight], p, Look.INK, 3.6)
+
+
+## 出门的画面: 那个地方的底色和地面, 魔物走过去, 碰到的魔物站在右边, 带回来的东西冒在头上
+func _draw_out(p: float, pet: Pet) -> void:
+	var look: Array = Outings.LOOK.get(out_id, ["dfe9d3", "8cc06a"])
+	draw_rect(Rect2(Vector2(0, 30) * p, Vector2(W, 2) * p), Color(look[1]))
+	if out_id == "night":
+		for i in 6:  # 夜市的小灯笼
+			Art.draw(self, "lantern", Vector2(3 + i * 8, 2 + (i % 2) * 2) * p, p)
+	var elapsed := 3.5 - (out_until - t)
+	var x := 2.0 + minf(elapsed * 4.0, 10.0)  # 走过去, 走到碰到的魔物跟前停下
+	_draw_monster(p, pet.species, Vector2(x, 14 + (int(t * 3) % 2)), false, Color.WHITE)
+	if out_npc != "":
+		_draw_monster(p, out_npc, Vector2(29, 14), true, Color.WHITE)
+	if out_item != "" and out_until - t < 2.2:
+		Art.draw(self, out_item, Vector2(x + 4, 4) * p, p)
 
 
 # ---------------------------------------------------------------- 小游戏

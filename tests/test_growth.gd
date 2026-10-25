@@ -35,16 +35,18 @@ func test_teen_to_adult_table() -> void:
 func test_every_adult_is_reachable() -> void:
 	var reached := {}
 	var easy := {}
-	for id in ["yishou", "nigui"]:
-		for m in 7:
-			for d in 5:
-				for life in [0, 3, 9]:
-					reached[_form(id, m, d, life)] = true
-					easy[_form(id, m, d, life, Rules.EASY)] = true
+	for place in Species.PLACES:
+		for id in [Species.PLACES[place].teen_good, Species.PLACES[place].teen_bad]:
+			for m in 7:
+				for d in 5:
+					for life in [0, 3, 9]:
+						reached[_form(id, m, d, life)] = true
+						easy[_form(id, m, d, life, Rules.EASY)] = true
 	for id in Species.ORDER:
 		if Species.DATA[id].stage == "adult":
+			var secret: bool = Species.DATA[id].get("secret", false)
 			check(reached.has(id), "%s 能养出来" % id)
-			check(easy.has(id) != (id == "xingguang"), "放宽: %s %s" % [id, "养不出来" if id == "xingguang" else "能养出来"])
+			check(easy.has(id) != secret, "放宽: %s %s" % [id, "养不出来" if secret else "能养出来"])
 
 
 func test_perfect_care_from_egg_grows_all_the_way() -> void:
