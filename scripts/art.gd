@@ -1,0 +1,509 @@
+class_name Art
+extends RefCounted
+## 像素图: 用一行行字画出来 (一个字 = 一个点, 「.」是透明), 照原版小屏幕的感觉, 但带颜色 (用户 2026-10-25 定的)。
+## 魔物和蛋只画左半边 (每行 8 个字), 右半边照着翻过来, 一定左右对称; 小图标照原样 (不翻)。
+## 怪物都是我们自己画的, 不用拓麻歌子的图。
+
+const COLORS := {
+	"k": Color("2a2333"),  # 描边
+	"w": Color("ffffff"),
+	"p": Color("ffb3c8"),  # 粉
+	"m": Color("ff7aa0"),  # 腮红
+	"g": Color("7cd36b"),  # 绿
+	"y": Color("ffd84a"),  # 黄
+	"o": Color("ff9a3c"),  # 橙
+	"r": Color("e8483a"),  # 红
+	"l": Color("8fd0ff"),  # 浅蓝
+	"c": Color("4aa3e8"),  # 蓝
+	"b": Color("2f6fd0"),  # 深蓝
+	"n": Color("b0804a"),  # 棕
+	"h": Color("6e4a2a"),  # 深棕
+	"s": Color("a8a8b0"),  # 灰
+	"d": Color("6a6a74"),  # 深灰
+	"v": Color("a050d0"),  # 紫
+	"i": Color("fff1d0"),  # 奶白
+	"e": Color("5a3070"),  # 暗紫
+	"f": Color("ffc433"),  # 金
+	"q": Color("cfcfcf"),  # 空心的灰
+}
+
+## 魔物 (左半边, 16 行 × 8)
+const HALF := {
+	"egg": [
+		"........",
+		"......kk",
+		".....kww",
+		"....kwvw",
+		"...kwwww",
+		"...kwvww",
+		"..kwwwww",
+		"..kwwwvw",
+		"..kwvwww",
+		"..kwwwww",
+		"..kwwvww",
+		"...kwwww",
+		"...kvwww",
+		"....kkww",
+		"......kk",
+		"........",
+	],
+	"tuanzi": [
+		"........",
+		"........",
+		"........",
+		"........",
+		"........",
+		"........",
+		".....kkk",
+		"....kppp",
+		"...kpppp",
+		"...kpkpp",
+		"...kpkpp",
+		"...kmppp",
+		"...kpppk",
+		"....kppp",
+		".....kkk",
+		"........",
+	],
+	"jianjiao": [
+		"........",
+		"........",
+		".......k",
+		"......ky",
+		"......ky",
+		"....kkkk",
+		"...kgggg",
+		"..kggggg",
+		"..kggkgg",
+		"..kggkgg",
+		"..kggggg",
+		"..kggggk",
+		"..kggggg",
+		"...kgggg",
+		"....kkkk",
+		"........",
+	],
+	"yishou": [
+		"........",
+		"........",
+		"....kk..",
+		"...kllk.",
+		"...kllkk",
+		"...kllll",
+		"..klllll",
+		"..kllkll",
+		"k.kllkll",
+		"kckllllk",
+		"kcckllll",
+		".kkkllll",
+		"...kllll",
+		"...kllkk",
+		"...kkk..",
+		"........",
+	],
+	"nigui": [
+		"........",
+		"........",
+		"........",
+		"......kk",
+		"....kknn",
+		"...knnnn",
+		"..knnnnn",
+		"..knnknn",
+		"..knnknn",
+		"..knnnnn",
+		"..knnnhh",
+		"..knnnnn",
+		".knnnnnn",
+		".knhnnnh",
+		"..kkkkkk",
+		"........",
+	],
+	"huolong": [
+		".......y",
+		"......yo",
+		".....yoo",
+		"..k..kkk",
+		"..kkkrrr",
+		"...krrrr",
+		"..krrrrr",
+		"..krwkrr",
+		"..krwkrr",
+		"kkkrrrrr",
+		"korrrrkk",
+		"koorryyy",
+		".kkryyyy",
+		"...kryyy",
+		"...krrkk",
+		"...kkk..",
+	],
+	"shuiling": [
+		".......k",
+		"......kl",
+		"......kb",
+		".....kbl",
+		".....kbb",
+		"....kbbb",
+		"...kbbbb",
+		"...kbkbb",
+		"..kbbkbb",
+		"..klbbbb",
+		"..klbbbk",
+		"..kbbbbb",
+		"..kbbbbb",
+		"...kbbbb",
+		"....kkkk",
+		"........",
+	],
+	"linlu": [
+		"..h.h...",
+		"..hhh...",
+		"...hg...",
+		"...hhkkk",
+		"...knnnn",
+		"..knnnnn",
+		"..knnknn",
+		"..knnknn",
+		"..knnnnn",
+		"...knnnk",
+		"....knnn",
+		"...knnnn",
+		"..knwnnn",
+		"..knnnwn",
+		"..knkknk",
+		"..kk.kk.",
+	],
+	"shixiang": [
+		"........",
+		"....kkkk",
+		"...kssss",
+		"...ksdss",
+		"...kyyss",
+		"...kssss",
+		"...ksddd",
+		".kkkkkkk",
+		"ksskssss",
+		"ksskssds",
+		"ksskssss",
+		"kkkkssss",
+		"...kssss",
+		"...ksskk",
+		"...kssk.",
+		"...kkkk.",
+	],
+	"mogu": [
+		"........",
+		".....kkk",
+		"...kkvvv",
+		"..kvvwvv",
+		".kvvvvvv",
+		".kvwvvvw",
+		"kvvvvvvv",
+		"kkkkkkkk",
+		"....kiii",
+		"....kiki",
+		"....kiki",
+		"....kiii",
+		"....kiik",
+		"....kiii",
+		"...kkiii",
+		"...kkkkk",
+	],
+	"xiaomo": [
+		"..k.....",
+		"..rk....",
+		"..rrk...",
+		"...rkkkk",
+		"...keeee",
+		"..keeeee",
+		"..keeree",
+		"..keeree",
+		"..keeeee",
+		"..keeewk",
+		"k.keeeee",
+		"kkkeeeee",
+		".kkkeeee",
+		"...keeee",
+		"...keekk",
+		"...kkk..",
+	],
+	"xingguang": [
+		".......y",
+		".....yyy",
+		"......yy",
+		"..k..y.k",
+		"..kkkfff",
+		"...kffff",
+		"..kfffff",
+		"..kfwkff",
+		"..kfwkff",
+		"kkkfffff",
+		"kwwffffk",
+		"kwwffiii",
+		".kkfiiii",
+		"...kfiii",
+		"...kffkk",
+		"...kkk..",
+	],
+	"ghost": [
+		"........",
+		"........",
+		"........",
+		"....kkkk",
+		"...kwwww",
+		"..kwwwww",
+		"..kwwkww",
+		"..kwwkww",
+		"..kwwwww",
+		"..kwwwwk",
+		"..kwwwww",
+		"..kwwwww",
+		"..kwkwwk",
+		"..kk.kk.",
+		"........",
+		"........",
+	],
+}
+
+## 小图标 (照原样画, 不翻)
+const ICONS := {
+	"meal": [
+		"..kkkk..",
+		".kwwwwk.",
+		"kwwwwwwk",
+		"kkkkkkkk",
+		"kbbbbbbk",
+		".kbbbbk.",
+		"..kkkk..",
+		"........",
+	],
+	"snack": [
+		"...kk...",
+		"..krrk..",
+		"..kkkk..",
+		".kpppwk.",
+		"kkkkkkkk",
+		"kyyyyyyk",
+		"kyyyyyyk",
+		"kkkkkkkk",
+	],
+	"light": [
+		"..kkkk..",
+		".kyyyyk.",
+		"kyywyyyk",
+		"kyyyyyyk",
+		".kyyyyk.",
+		"..kssk..",
+		"..kssk..",
+		"...kk...",
+	],
+	"game": [
+		"..kkkk..",
+		".kwwrrk.",
+		"kwwrrrrk",
+		"krrrrrrk",
+		"krrrrwwk",
+		".krrwwk.",
+		"..kkkk..",
+		"........",
+	],
+	"medicine": [
+		"........",
+		"....kkk.",
+		"...kwwwk",
+		"..kwwwwk",
+		".krrrrk.",
+		"krrrrk..",
+		"kkkkk...",
+		"........",
+	],
+	"clean": [
+		"......k.",
+		".....k..",
+		"....k...",
+		"...k....",
+		"..kyk...",
+		".kyyyk..",
+		"kyyyyyk.",
+		"kkkkkkk.",
+	],
+	"status": [
+		"........",
+		".kk..kk.",
+		"krrkkrrk",
+		"krrrrrrk",
+		"krrrrrrk",
+		".krrrrk.",
+		"..krrk..",
+		"...kk...",
+	],
+	"scold": [
+		"...kk...",
+		"..krrk..",
+		"..krrk..",
+		"..krrk..",
+		"...kk...",
+		"........",
+		"...kk...",
+		"...kk...",
+	],
+	"menu": [
+		"........",
+		"kkk..kkk",
+		"kwwkkwwk",
+		"kwwkkwwk",
+		"kwwkkwwk",
+		"kwwkkwwk",
+		"kkkkkkkk",
+		"........",
+	],
+	"heart": [
+		".kk.kk.",
+		"krrkrrk",
+		"krrrrrk",
+		".krrrk.",
+		"..krk..",
+		"...k...",
+	],
+	"heart_empty": [
+		".kk.kk.",
+		"kqqkqqk",
+		"kqqqqqk",
+		".kqqqk.",
+		"..kqk..",
+		"...k...",
+	],
+	"poop": [
+		"...k...",
+		"..knk..",
+		".knnnk.",
+		".knhnk.",
+		"knnnnnk",
+		"kkkkkkk",
+	],
+	"skull": [
+		".kkkkk.",
+		"kwwwwwk",
+		"kwkwkwk",
+		"kwwwwwk",
+		".kwkwk.",
+		"..kkk..",
+	],
+	"z": [
+		"kkkk",
+		"..k.",
+		".k..",
+		"kkkk",
+	],
+	"note": [
+		"..kk.",
+		"..k.k",
+		"..k..",
+		".kk..",
+		"kkk..",
+		".k...",
+	],
+	"angry": [
+		"k...k",
+		".k.k.",
+		"..k..",
+		".k.k.",
+		"k...k",
+	],
+	"bag": [
+		"..kk..",
+		".k..k.",
+		"kkkkkk",
+		"knnnnk",
+		"knnnnk",
+		"kkkkkk",
+	],
+	"house": [
+		"...kk...",
+		"..krrk..",
+		".krrrrk.",
+		"krrrrrrk",
+		".kiiiik.",
+		".kikkik.",
+		".kikkik.",
+		".kkkkkk.",
+	],
+	"block": [
+		"kkkk",
+		"kggk",
+		"kggk",
+		"kkkk",
+	],
+	"block_empty": [
+		"kkkk",
+		"kqqk",
+		"kqqk",
+		"kkkk",
+	],
+}
+
+static var _rows_cache := {}
+static var _tex_cache := {}
+
+
+## 一张图的每一行 (魔物把右半边补上)
+static func rows(name: String) -> PackedStringArray:
+	if not _rows_cache.has(name):
+		var out := PackedStringArray()
+		if HALF.has(name):
+			for r in HALF[name]:
+				var right := ""
+				for i in range(r.length() - 1, -1, -1):
+					right += r[i]
+				out.append(r + right)
+		else:
+			for r in ICONS[name]:
+				out.append(r)
+		_rows_cache[name] = out
+	return _rows_cache[name]
+
+
+static func has(name: String) -> bool:
+	return HALF.has(name) or ICONS.has(name)
+
+
+static func size_of(name: String) -> Vector2i:
+	var r := rows(name)
+	return Vector2i(r[0].length(), r.size())
+
+
+## 在 ci 上画: 左上角在 pos, 每个点 px 那么大; flip 左右翻; tint 乘上的颜色 (关灯时变暗);
+## solid 给了的话整张图都用这一个颜色 (关灯时画白色的 Z)
+static func draw(ci: CanvasItem, name: String, pos: Vector2, px: float, flip := false, tint := Color.WHITE,
+		solid := Color(0, 0, 0, 0)) -> void:
+	var r := rows(name)
+	var w := r[0].length()
+	for y in r.size():
+		var line := r[y]
+		for x in w:
+			var ch := line[x]
+			if ch == ".":
+				continue
+			var dx := (w - 1 - x) if flip else x
+			var color: Color = solid if solid.a > 0 else COLORS[ch] * tint
+			ci.draw_rect(Rect2(pos + Vector2(dx, y) * px, Vector2(px, px)), color)
+
+
+## 做成图片 (按钮上的图标、图鉴), 每个点放大 scale 倍
+static func image(name: String, scale: int, tint := Color.WHITE) -> Image:
+	var r := rows(name)
+	var w := r[0].length()
+	var img := Image.create_empty(w * scale, r.size() * scale, false, Image.FORMAT_RGBA8)
+	for y in r.size():
+		for x in w:
+			var ch := r[y][x]
+			if ch != ".":
+				img.fill_rect(Rect2i(x * scale, y * scale, scale, scale), COLORS[ch] * tint)
+	return img
+
+
+static func texture(name: String, scale: int, tint := Color.WHITE) -> ImageTexture:
+	var key := "%s/%d/%s" % [name, scale, tint.to_html()]
+	if not _tex_cache.has(key):
+		_tex_cache[key] = ImageTexture.create_from_image(image(name, scale, tint))
+	return _tex_cache[key]
