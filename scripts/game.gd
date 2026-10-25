@@ -13,6 +13,13 @@ var use_system_tz := true   # 测试关掉, 用固定的 tz
 var fixed_time := -1        # 测试用: 不看真的钟, 把「现在」钉在这个时间 (-1 = 看真的钟)
 var last_result := ""       # 上一个动作的结果代号 (ok full asleep……), 画面用来决定冒什么小图标
 
+# 第二版: 魔晶、背包、装扮 (跟着主人, 换一只魔物也还在)
+var money := Items.START_MONEY
+var items := {}             # 吃的: 代号 -> 几个
+var owned: Array = []       # 买下来一直有的: 玩具、衣服配饰、房间布置
+var equip := {}             # 装扮: 地方 (hat neck wall rug furniture decor) -> 代号
+var toy_used := {}          # 玩具上次玩的时间 (Unix 秒)
+
 
 ## 现在几点 (Unix 秒, 加上调试快进的)
 func clock() -> int:
@@ -104,7 +111,8 @@ func act(what: String, arg: Variant = null) -> String:
 	match what:
 		"meal":
 			r = pet.feed_meal()
-			text = {"ok": "吃了饭, 饱一点了", "full": "它吃饱了, 不想吃"}.get(r, "")
+			text = {"ok": "吃了饭, 饱一点了", "full": "它吃饱了, 不想吃",
+				"bland": "吃了, 不过一脸嫌弃 (长大了觉得白饭没味道)"}.get(r, "")
 		"snack":
 			r = pet.feed_snack()
 			text = {"ok": "吃了零食, 好开心! (吃多了会胖哦)"}.get(r, "")
@@ -112,8 +120,34 @@ func act(what: String, arg: Variant = null) -> String:
 			r = pet.toggle_lights()
 			text = {"on": "开灯了", "off": "关灯了"}.get(r, "")
 		"game":
-			r = pet.finish_game(int(arg))
-			text = {"won": "赢了! 它很开心", "lost": "输了…… 它有点失望"}.get(r, "")
+			# arg = {won: 赢了没有, reward: 给多少魔晶}
+			r = pet.finish_game(bool(arg.won))
+			if r == "won" or r == "lost":
+				money += int(arg.reward)
+				text = ("赢了! 它很开心" if r == "won" else "输了…… 它有点失望") + (", 得到魔晶 %d" % arg.reward if arg.reward > 0 else "")
+		"food":
+			if int(items.get(arg, 0)) <= 0:
+				r = "none"
+				text = "没有%s了" % Items.name_of(arg)
+			else:
+				r = pet.eat(Items.DATA[arg])
+				if r == "ok":
+					items[arg] = int(items[arg]) - 1
+					if items[arg] <= 0:
+						items.erase(arg)
+					text = "吃了%s, 好吃!" % Items.name_of(arg)
+				else:
+					text = {"full": "它吃饱了, 不想吃"}.get(r, "")
+		"toy":
+			var wait := toy_wait(arg)
+			if wait > 0:
+				r = "tired"
+				text = "它刚玩过%s, 还不想玩 (%s以后)" % [Items.name_of(arg), sitter_text(wait)]
+			else:
+				r = pet.play_toy()
+				if r == "ok":
+					toy_used[arg] = clock()
+					text = "陪它玩%s, 它很开心!" % Items.name_of(arg)
 		"medicine":
 			r = pet.give_medicine()
 			text = {"healthy": "它没生病, 不用吃药", "more": "吃了药, 还要再吃一次", "cured": "病好了!"}.get(r, "")
@@ -147,6 +181,41 @@ func act(what: String, arg: Variant = null) -> String:
 	return text
 
 
+## 玩具还要多久才能再玩 (秒, 0 = 现在就能玩)
+func toy_wait(id: String) -> int:
+	if not toy_used.has(id):
+		return 0
+	return maxi(0, int(toy_used[id]) + Items.TOY_COOLDOWN - clock())
+
+
+## 买东西: ok / poor 钱不够 / have 已经有了 / full 吃的放不下了
+func buy(id: String) -> String:
+	var d: Dictionary = Items.DATA[id]
+	if d.kind == "food":
+		if int(items.get(id, 0)) >= Items.MAX_STACK:
+			return "full"
+	elif id in owned:
+		return "have"
+	if money < d.price:
+		return "poor"
+	money -= d.price
+	if d.kind == "food":
+		items[id] = int(items.get(id, 0)) + 1
+	else:
+		owned.append(id)
+		if not equip.has(d.kind) and d.kind != "toy":
+			equip[d.kind] = id  # 第一次买这一类的, 直接穿上 / 摆上
+	return "ok"
+
+
+## 换装扮: id 空 = 拿下来
+func set_equip(slot: String, id: String) -> void:
+	if id == "":
+		equip.erase(slot)
+	elif id in owned and Items.kind_of(id) == slot:
+		equip[slot] = id
+
+
 ## 几小时几分 (托人照看还剩多久)
 static func sitter_text(seconds: int) -> String:
 	var m := ceili(seconds / 60.0)
@@ -170,8 +239,9 @@ func take_messages() -> Array:
 # ---------------------------------------------------------------- 存档
 
 func to_dict() -> Dictionary:
-	return {"version": 1, "pet": pet.to_dict() if pet != null else null, "dex": dex, "history": history,
-		"offset": offset, "difficulty": difficulty}
+	return {"version": 2, "pet": pet.to_dict() if pet != null else null, "dex": dex, "history": history,
+		"offset": offset, "difficulty": difficulty, "money": money, "items": items, "owned": owned, "equip": equip,
+		"toy_used": toy_used}
 
 
 static func from_dict(d: Dictionary) -> Game:
@@ -187,6 +257,19 @@ static func from_dict(d: Dictionary) -> Game:
 			g.history.append(h)
 	g.offset = int(d.get("offset", 0))
 	g.difficulty = str(d.get("difficulty", Rules.EASY))
+	# 第二版加的 (第一版的存档没有这些, 就用一开始的)
+	g.money = int(d.get("money", Items.START_MONEY))
+	for k in d.get("items", {}):
+		if Items.DATA.has(k):
+			g.items[k] = int(d.items[k])
+	for k in d.get("owned", []):
+		if Items.DATA.has(k) and not k in g.owned:
+			g.owned.append(str(k))
+	for k in d.get("equip", {}):
+		if str(d.equip[k]) in g.owned:
+			g.equip[k] = str(d.equip[k])
+	for k in d.get("toy_used", {}):
+		g.toy_used[k] = int(d.toy_used[k])
 	return g
 
 

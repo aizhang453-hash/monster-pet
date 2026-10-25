@@ -56,9 +56,7 @@ const LIFESPAN_MIN := 8
 ## 照看的人会喂饱、哄开心、打扫、治病、关灯, 这段时间不叫你、不算失误, 但它照样长大。每天最多托这么久 (我们定的)
 const SITTER_PER_DAY := 10 * HOUR
 
-## 小游戏: 猜它往左还是往右, 一共 5 次, 猜中 3 次以上算赢 (照原版)
-const GAME_ROUNDS := 5
-const GAME_WIN := 3
+## 小游戏的规矩 (几次、怎么算赢、给多少魔晶) 在 scripts/game_*.gd 里; 商店的价钱在 scripts/items.gd 里
 
 ## 体重 (克): 正餐 +1, 零食 +2, 玩一次小游戏 -1 (照原版)。最轻不会低于这个种类的基本体重
 const MEAL_WEIGHT := 1

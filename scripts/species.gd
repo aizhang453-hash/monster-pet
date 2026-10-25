@@ -5,19 +5,20 @@ extends RefCounted
 ## 名字都是暂定的 (2026-10-25 Claude 起的), 用户想改随时改。
 
 ## bed / wake: 几点睡、几点醒 (从 0 点算起的分钟); life: 平均活到几岁; weight: 基本体重 (克)
+## hat: 帽子的下沿放在图的第几行; neck: 领结、围巾的上沿放在第几行 (嘴巴下面; 第二版的装扮用)
 const DATA := {
 	"egg": {"name": "魔物蛋", "stage": "egg", "weight": 0},
-	"tuanzi": {"name": "小团子", "stage": "baby", "weight": 5},
-	"jianjiao": {"name": "小尖角", "stage": "child", "weight": 10, "bed": 20 * 60, "wake": 9 * 60},
-	"yishou": {"name": "小翼兽", "stage": "teen", "weight": 20, "bed": 21 * 60, "wake": 9 * 60},
-	"nigui": {"name": "小泥怪", "stage": "teen", "weight": 20, "bed": 21 * 60, "wake": 9 * 60},
-	"huolong": {"name": "火焰龙", "stage": "adult", "weight": 35, "bed": 21 * 60, "wake": 8 * 60, "life": 14},
-	"shuiling": {"name": "水灵", "stage": "adult", "weight": 25, "bed": 22 * 60, "wake": 9 * 60, "life": 13},
-	"linlu": {"name": "林鹿", "stage": "adult", "weight": 30, "bed": 20 * 60, "wake": 8 * 60, "life": 12},
-	"shixiang": {"name": "石头魔像", "stage": "adult", "weight": 50, "bed": 22 * 60, "wake": 9 * 60, "life": 16},
-	"mogu": {"name": "毒蘑菇", "stage": "adult", "weight": 20, "bed": 21 * 60, "wake": 9 * 60, "life": 10},
-	"xiaomo": {"name": "小恶魔", "stage": "adult", "weight": 25, "bed": 23 * 60, "wake": 10 * 60, "life": 9},
-	"xingguang": {"name": "星光龙", "stage": "adult", "weight": 30, "bed": 21 * 60, "wake": 8 * 60, "life": 18, "secret": true},
+	"tuanzi": {"hat": 6, "neck": 12, "name": "小团子", "stage": "baby", "weight": 5},
+	"jianjiao": {"hat": 5, "neck": 12, "name": "小尖角", "stage": "child", "weight": 10, "bed": 20 * 60, "wake": 9 * 60},
+	"yishou": {"hat": 4, "neck": 10, "name": "小翼兽", "stage": "teen", "weight": 20, "bed": 21 * 60, "wake": 9 * 60},
+	"nigui": {"hat": 4, "neck": 11, "name": "小泥怪", "stage": "teen", "weight": 20, "bed": 21 * 60, "wake": 9 * 60},
+	"huolong": {"hat": 4, "neck": 11, "name": "火焰龙", "stage": "adult", "weight": 35, "bed": 21 * 60, "wake": 8 * 60, "life": 14},
+	"shuiling": {"hat": 5, "neck": 11, "name": "水灵", "stage": "adult", "weight": 25, "bed": 22 * 60, "wake": 9 * 60, "life": 13},
+	"linlu": {"hat": 4, "neck": 10, "name": "林鹿", "stage": "adult", "weight": 30, "bed": 20 * 60, "wake": 8 * 60, "life": 12},
+	"shixiang": {"hat": 2, "neck": 7, "name": "石头魔像", "stage": "adult", "weight": 50, "bed": 22 * 60, "wake": 9 * 60, "life": 16},
+	"mogu": {"hat": 2, "neck": 13, "name": "毒蘑菇", "stage": "adult", "weight": 20, "bed": 21 * 60, "wake": 9 * 60, "life": 10},
+	"xiaomo": {"hat": 4, "neck": 10, "name": "小恶魔", "stage": "adult", "weight": 25, "bed": 23 * 60, "wake": 10 * 60, "life": 9},
+	"xingguang": {"hat": 4, "neck": 11, "name": "星光龙", "stage": "adult", "weight": 30, "bed": 21 * 60, "wake": 8 * 60, "life": 18, "secret": true},
 }
 
 ## 图鉴里的顺序 (蛋不算)

@@ -278,6 +278,14 @@ const ICONS := {
 		"........",
 	],
 	"snack": [
+		"........",
+		"k.kkkk.k",
+		"kkpwppkk",
+		"kkppppkk",
+		"k.kkkk.k",
+		"........",
+	],
+	"cake": [
 		"...kk...",
 		"..krrk..",
 		"..kkkk..",
@@ -286,6 +294,64 @@ const ICONS := {
 		"kyyyyyyk",
 		"kyyyyyyk",
 		"kkkkkkkk",
+	],
+	"apple": [
+		"....h...",
+		"...hg...",
+		".kkkkkk.",
+		"krrrwrrk",
+		"krrrrwrk",
+		"krrrrrrk",
+		".krrrrk.",
+		"..kkkk..",
+	],
+	"icecream": [
+		"..kkkk..",
+		".kpppwk.",
+		".kppppk.",
+		"kkkkkkkk",
+		".knnnnk.",
+		"..knnk..",
+		"..knnk..",
+		"...kk...",
+	],
+	"feast": [
+		"..kkkk..",
+		".knnnnk.",
+		"knnonnnk",
+		"knnnnonk",
+		".knnnnk.",
+		"..kkwk..",
+		"....kwk.",
+		".....kk.",
+	],
+	"blocks": [
+		"........",
+		"..kkkk..",
+		"..krrk..",
+		"..krrk..",
+		"kkkkkkkk",
+		"kbbkkyyk",
+		"kbbkkyyk",
+		"kkkkkkkk",
+	],
+	"pinwheel": [
+		"kk...kk.",
+		"krk.kyk.",
+		".krkyk..",
+		"..kkk...",
+		".kbkgk..",
+		"kbk.kgk.",
+		"kk..kkk.",
+		"....k...",
+	],
+	"coin": [
+		"..kk..",
+		".kllk.",
+		"klwllk",
+		"kllllk",
+		".kllk.",
+		"..kk..",
 	],
 	"light": [
 		"..kkkk..",
@@ -428,6 +494,102 @@ const ICONS := {
 		".kikkik.",
 		".kkkkkk.",
 	],
+	"strawhat": [
+		"...kkkk...",
+		"..kyyyyk..",
+		".kkrrrrkk.",
+		"kyyyyyyyyk",
+		"kkkkkkkkkk",
+	],
+	"wizardhat": [
+		"....kk....",
+		"...kvvk...",
+		"...kvyk...",
+		"..kvvvvk..",
+		"..kvvvvk..",
+		"kkkkkkkkkk",
+		"kvvvvvvvvk",
+		"kkkkkkkkkk",
+	],
+	"crown": [
+		"k...kk...k",
+		"kk.kyyk.kk",
+		"kykyyyykyk",
+		"kyyyryyyyk",
+		"kkkkkkkkkk",
+	],
+	"bowtie": [
+		"kk....kk",
+		"krkkkkrk",
+		"krrrrrrk",
+		"krkkkkrk",
+		"kk....kk",
+	],
+	"scarf": [
+		"kkkkkkkkkkkk",
+		"krwrwrwrwrwk",
+		"kkkkkkkrwk..",
+		".......krk..",
+		".......kkk..",
+	],
+	"plant": [
+		"...kk...",
+		"..kggk..",
+		".kgggkk.",
+		"kgggkggk",
+		"kggkgggk",
+		".kkggkk.",
+		"...kk...",
+		".kkkkkk.",
+		".knnnnk.",
+		".knnnnk.",
+		"..knnk..",
+		"..kkkk..",
+	],
+	"bed": [
+		"kk............",
+		"kwk...........",
+		"kwwkkkkkkkkkkk",
+		"kwwbbbbbbbbbbk",
+		"kkkkkkkkkkkkkk",
+		"knk........knk",
+		"kkk........kkk",
+	],
+	"painting": [
+		"kkkkkkkkkk",
+		"knnnnnnnnk",
+		"knlllyllnk",
+		"knllllllnk",
+		"knggllggnk",
+		"knggggggnk",
+		"knnnnnnnnk",
+		"kkkkkkkkkk",
+	],
+	"window": [
+		"kkkkkkkkkk",
+		"knnnnnnnnk",
+		"knllnlllnk",
+		"knllnlwlnk",
+		"knnnnnnnnk",
+		"knllnlllnk",
+		"knllnlllnk",
+		"knnnnnnnnk",
+		"kkkkkkkkkk",
+	],
+	"berry": [
+		"..g.",
+		".rr.",
+		"rrwr",
+		".rr.",
+	],
+	"rock": [
+		".kkkk.",
+		"kssssk",
+		"ksdssk",
+		"kssdsk",
+		"kssssk",
+		".kkkk.",
+	],
 	"block": [
 		"kkkk",
 		"kggk",
@@ -500,6 +662,17 @@ static func image(name: String, scale: int, tint := Color.WHITE) -> Image:
 			if ch != ".":
 				img.fill_rect(Rect2i(x * scale, y * scale, scale, scale), COLORS[ch] * tint)
 	return img
+
+
+## 一块纯色 (墙纸、地毯的样子), 带描边
+static func swatch(color: Color, w: int, h: int) -> ImageTexture:
+	var key := "swatch/%s/%d/%d" % [color.to_html(), w, h]
+	if not _tex_cache.has(key):
+		var img := Image.create_empty(w, h, false, Image.FORMAT_RGBA8)
+		img.fill(COLORS.k)
+		img.fill_rect(Rect2i(3, 3, w - 6, h - 6), color)
+		_tex_cache[key] = ImageTexture.create_from_image(img)
+	return _tex_cache[key]
 
 
 static func texture(name: String, scale: int, tint := Color.WHITE) -> ImageTexture:

@@ -1,28 +1,24 @@
 class_name ScreenView
 extends Control
 ## 魔物蛋的小屏幕: 48 × 32 个点 (原版是 32 × 16 的黑白屏, 我们大一点、带颜色)。
-## 画魔物走来走去、便便、生病的骷髅、睡觉的 Z、关灯; 也画「状态」那一页和猜左右的小游戏。
+## 画魔物走来走去、便便、生病的骷髅、睡觉的 Z、关灯; 「状态」那一页; 小游戏;
+## 第二版: 房间布置 (墙纸、地毯、家具、墙上挂的) 和魔物身上的帽子、领结。
 
 const W := 48
 const H := 32
+const PLAY_COLORS := {"red": Color("e8483a"), "yellow": Color("ffd84a"), "blue": Color("2f6fd0"), "green": Color("7cd36b")}
 
 var game: Game
 var mode := "pet"            # pet 平时 / status 看状态 / play 小游戏
 var t := 0.0                 # 动画用的时间 (秒)
 var pet_x := 16.0
 var facing := 1              # 1 朝右, -1 朝左
-var effect := ""             # 刚做完动作, 旁边冒一个小图标 (meal snack medicine note angry)
+var effect := ""             # 刚做完动作, 旁边冒一个小图标 (meal snack medicine note angry……)
 var effect_until := 0.0
 var status_until := 0.0
+var minigame: MiniGame = null
 var _move_timer := 0.0
 var _rng := RandomNumberGenerator.new()
-
-# 小游戏: 猜它往左还是往右 (照原版)
-var play_round := 0
-var play_wins := 0
-var play_turn := 0           # 这一回合它跳向哪边: -1 左, 1 右, 0 还没跳
-var play_hit := false
-var play_until := 0.0
 
 
 func px() -> float:
@@ -33,8 +29,8 @@ func _process(delta: float) -> void:
 	t += delta
 	if mode == "status" and t > status_until:
 		mode = "pet"
-	if mode == "play" and play_turn != 0 and t > play_until and play_round < Rules.GAME_ROUNDS:
-		play_turn = 0
+	if mode == "play" and minigame != null:
+		minigame.step(delta)
 	_walk(delta)
 	queue_redraw()
 
@@ -66,25 +62,14 @@ func show_status() -> void:
 	status_until = t + 6.0
 
 
-func start_play() -> void:
+func start_play(id: String, rng_seed := 0) -> void:
+	minigame = MiniGames.make(id, rng_seed)
 	mode = "play"
-	play_round = 0
-	play_wins = 0
-	play_turn = 0
-	_rng.randomize()
 
 
-## 猜一次 (-1 左, 1 右)。猜完 5 次回 true
-func guess(dir: int) -> bool:
-	if mode != "play" or play_turn != 0 or play_round >= Rules.GAME_ROUNDS:
-		return false
-	play_turn = -1 if _rng.randf() < 0.5 else 1
-	play_hit = play_turn == dir
-	if play_hit:
-		play_wins += 1
-	play_round += 1
-	play_until = t + 0.9
-	return play_round >= Rules.GAME_ROUNDS
+func stop_play() -> void:
+	minigame = null
+	mode = "pet"
 
 
 # ---------------------------------------------------------------- 画
@@ -92,8 +77,11 @@ func guess(dir: int) -> bool:
 func _draw() -> void:
 	var p := px()
 	var pet := game.pet if game != null else null
-	var dark := pet != null and not pet.lights and not pet.is_over()
-	draw_rect(Rect2(Vector2.ZERO, size), Look.LCD_DARK if dark else Look.LCD)
+	var dark := pet != null and not pet.lights and not pet.is_over() and mode == "pet"
+	var bg := Look.LCD
+	if game != null and game.equip.has("wall"):
+		bg = Color(Items.DATA[game.equip.wall].color)
+	draw_rect(Rect2(Vector2.ZERO, size), Look.LCD_DARK if dark else bg)
 	if pet == null:
 		return
 	match mode:
@@ -109,6 +97,34 @@ func _text(pos: Vector2, s: String, p: float, color := Look.INK, scale := 4.2) -
 	draw_string(Look.font(), pos * p, s, HORIZONTAL_ALIGNMENT_LEFT, -1, int(p * scale), color)
 
 
+## 房间布置: 墙上挂的、地毯、左边的家具 (魔物从前面走过)
+func _draw_room(p: float, tint: Color) -> void:
+	if game.equip.has("decor"):
+		Art.draw(self, Items.ICON[game.equip.decor], Vector2(3, 3) * p, p, false, tint)
+	if game.equip.has("rug"):
+		draw_rect(Rect2(Vector2(0, 30) * p, Vector2(W, 2) * p), Color(Items.DATA[game.equip.rug].color) * tint)
+	if game.equip.has("furniture"):
+		var id: String = game.equip.furniture
+		var s := Art.size_of(Items.ICON[id])
+		Art.draw(self, Items.ICON[id], Vector2(1, 30 - s.y) * p, p, false, tint)
+
+
+## 魔物 + 它的帽子、领结 (pos 是魔物图的左上角)
+func _draw_monster(p: float, species: String, pos: Vector2, flip: bool, tint: Color) -> void:
+	Art.draw(self, species, pos * p, p, flip, tint)
+	var d: Dictionary = Species.DATA[species]
+	if not d.has("hat"):
+		return
+	if game.equip.has("neck"):
+		var n: String = Items.ICON[game.equip.neck]
+		var s := Art.size_of(n)
+		Art.draw(self, n, (pos + Vector2(8 - s.x / 2.0, d.neck)) * p, p, flip, tint)
+	if game.equip.has("hat"):
+		var h: String = Items.ICON[game.equip.hat]
+		var s := Art.size_of(h)
+		Art.draw(self, h, (pos + Vector2(8 - s.x / 2.0, d.hat - s.y)) * p, p, flip, tint)
+
+
 func _draw_pet(p: float, pet: Pet, dark: bool) -> void:
 	var tint := Color(0.35, 0.35, 0.45) if dark else Color.WHITE
 	if pet.stage == "dead":
@@ -117,7 +133,7 @@ func _draw_pet(p: float, pet: Pet, dark: bool) -> void:
 	if pet.stage == "gone":
 		# 背着小包往右走, 走出屏幕
 		var x := fmod(t * 5.0, W + 24.0) - 18.0
-		Art.draw(self, pet.species, Vector2(x, 14 + (int(t * 2) % 2)) * p, p)
+		_draw_monster(p, pet.species, Vector2(x, 14 + (int(t * 2) % 2)), false, Color.WHITE)
 		Art.draw(self, "bag", Vector2(x - 3, 21) * p, p)
 		return
 	if pet.sitting():
@@ -127,6 +143,7 @@ func _draw_pet(p: float, pet: Pet, dark: bool) -> void:
 		_text(Vector2(23, 21), "还剩", p, Look.INK, 3.2)
 		_text(Vector2(23, 28), Game.sitter_text(pet.sitter_left()), p, Look.INK, 3.2)
 		return
+	_draw_room(p, tint)
 	if pet.stage == "egg":
 		var left := pet.stage_at + Rules.STAGE_TIME.egg - pet.now
 		var wobble := 0.0
@@ -137,20 +154,21 @@ func _draw_pet(p: float, pet: Pet, dark: bool) -> void:
 	for i in pet.poop:
 		Art.draw(self, "poop", Vector2(41, 25 - i * 7) * p, p, false, tint)
 	if pet.asleep:
-		Art.draw(self, pet.species, Vector2(pet_x, 15) * p, p, facing < 0, tint * Color(0.85, 0.85, 0.9))
+		_draw_monster(p, pet.species, Vector2(pet_x, 15), facing < 0, tint * Color(0.85, 0.85, 0.9))
 		var n := int(t * 1.5) % 3 + 1
 		for i in n:
 			Art.draw(self, "z", Vector2(pet_x + 14 + i * 4, 11 - i * 4) * p, p, false, Color.WHITE,
 				Color("e8e8ff") if dark else Color(0, 0, 0, 0))
 	else:
 		var bob := 1 if int(t * 2.0) % 2 == 0 else 0
-		Art.draw(self, pet.species, Vector2(pet_x, 14 + bob) * p, p, facing < 0, tint)
+		_draw_monster(p, pet.species, Vector2(pet_x, 14 + bob), facing < 0, tint)
 	if pet.sick:
-		Art.draw(self, "skull", Vector2(1, 1) * p, p, false, tint)
+		Art.draw(self, "skull", Vector2(33, 1) * p, p, false, tint)
 	if pet.wants_leave:
 		Art.draw(self, "bag", Vector2(pet_x + 16, 23) * p, p, false, tint)
 	if effect != "" and t < effect_until:
-		Art.draw(self, effect, Vector2(minf(pet_x + 17, W - 9), 5) * p, p, false, tint)
+		var s := Art.size_of(effect)
+		Art.draw(self, effect, Vector2(minf(pet_x + 17, W - s.x - 1), 5) * p, p, false, tint)
 
 
 func _draw_status(p: float, pet: Pet) -> void:
@@ -176,12 +194,40 @@ func _draw_status(p: float, pet: Pet) -> void:
 	_text(Vector2(2, 31), "%d 岁   %d 克" % [pet.age(), pet.weight], p, Look.INK, 3.6)
 
 
+# ---------------------------------------------------------------- 小游戏
+
 func _draw_play(p: float, pet: Pet) -> void:
-	_text(Vector2(2, 6), "第 %d/%d 次   猜中 %d" % [mini(play_round + (0 if play_turn != 0 else 1), Rules.GAME_ROUNDS),
-		Rules.GAME_ROUNDS, play_wins], p, Look.INK, 3.6)
-	var x := 16.0 + play_turn * 12
-	Art.draw(self, pet.species, Vector2(x, 13) * p, p, play_turn < 0)
-	if play_turn != 0:
-		_text(Vector2(14 if play_turn > 0 else 2, 12), "猜中!" if play_hit else "没猜中", p, Look.INK, 3.6)
-	elif play_round < Rules.GAME_ROUNDS:
-		_text(Vector2(9, 12), "它会往哪边跳?", p, Look.INK, 3.4)
+	var g := minigame
+	if g == null:
+		return
+	match g.id:
+		"guess":
+			var guess := g as GuessGame
+			var x := 16.0 + guess.turn * 12
+			_draw_monster(p, pet.species, Vector2(x, 13), guess.turn < 0, Color.WHITE)
+			if guess.turn != 0:
+				_text(Vector2(14 if guess.turn > 0 else 2, 12), "猜中!" if guess.hit else "没猜中", p, Look.INK, 3.6)
+			elif not guess.done:
+				_text(Vector2(9, 12), "它会往哪边跳?", p, Look.INK, 3.4)
+		"catch":
+			var c := g as CatchGame
+			for f in c.fruits:
+				Art.draw(self, "berry", Vector2(f.x, f.y) * p, p)
+			_draw_monster(p, pet.species, Vector2(c.pet_x, 15), false, Color.WHITE)
+		"jump":
+			var j := g as JumpGame
+			draw_rect(Rect2(Vector2(0, 30) * p, Vector2(W, 2) * p), Color("8a7a5a"))
+			for r in j.rocks:
+				Art.draw(self, "rock", Vector2(r.x, 24) * p, p)
+			_draw_monster(p, pet.species, Vector2(JumpGame.PET_X, 14 - j.height()), false, Color.WHITE)
+		"memory":
+			var m := g as MemoryGame
+			for i in MemoryGame.COLORS.size():
+				var c: String = MemoryGame.COLORS[i]
+				var r := Rect2(Vector2(3 + i * 11, 12), Vector2(9, 15))
+				var col: Color = PLAY_COLORS[c]
+				if m.lit == c:
+					draw_rect(Rect2((r.position - Vector2(1, 1)) * p, (r.size + Vector2(2, 2)) * p), Look.INK)
+					draw_rect(Rect2(r.position * p, r.size * p), col.lightened(0.15))
+				else:
+					draw_rect(Rect2(r.position * p, r.size * p), col.lerp(Look.LCD, 0.65))

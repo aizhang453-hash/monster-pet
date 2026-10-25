@@ -55,10 +55,10 @@ func _run() -> void:
 	await _shot("06_状态")
 	main.screen.mode = "pet"
 	main.do_action("play")
-	main.screen.play_turn = 0
-	main.guess(1)
+	main.choose(0)
+	main.play_press("right")
 	await _shot("07_小游戏")
-	main.finish_play()
+	main.quit_play()
 	main.do_action("sitter")
 	_later(3 * 3600)
 	await _shot("07b_托人照看")
@@ -115,5 +115,57 @@ func _run() -> void:
 	await _shot("16_死了")
 	main.close_dialog()
 	await _shot("17_幽灵")
+	# 第二版: 商店、装扮、房间、小游戏
+	main.close_dialog()
+	main.game.new_egg(Rules.EASY)
+	main._shown_end = false
+	var q: Pet = main.game.pet
+	q.hatched_at = q.now
+	q._become("huolong")
+	q.hunger = 4
+	q.happy = 4
+	q._settle()
+	main.game._take_events()
+	main.game.money = 900
+	main.screen.pet_x = 18.0
+	main._refresh()
+	main.do_action("more")
+	main.choose(0)
+	await _shot("18_商店")
+	main.choose(2)
+	await _shot("19_商店_衣服配饰")
+	for id in ["crown", "scarf", "wall_pink", "rug_grass", "plant", "painting", "apple", "cake", "ball"]:
+		main.game.buy(id)
+	main.close_dialog()
+	main._refresh()
+	await _shot("20_房间和装扮")
+	main.do_action("more")
+	main.choose(1)
+	await _shot("21_装扮")
+	main.close_dialog()
+	main.do_action("feed")
+	await _shot("22_喂什么_有买的")
+	main.close_dialog()
+	main.do_action("play")
+	await _shot("23_玩什么")
+	main.close_dialog()
+	main.start_play("catch", 3)
+	for i in 70:
+		main.screen.minigame.step(0.05)
+	await _shot("24_接果子")
+	main.quit_play()
+	main.start_play("jump", 3)
+	for i in 60:
+		main.screen.minigame.step(0.05)
+	main.play_press("jump")
+	for i in 8:
+		main.screen.minigame.step(0.05)
+	await _shot("25_跳石头")
+	main.quit_play()
+	main.start_play("memory", 3)
+	for i in 14:
+		main.screen.minigame.step(0.05)
+	await _shot("26_记颜色")
+	main.quit_play()
 	SaveGame.erase()
 	quit()

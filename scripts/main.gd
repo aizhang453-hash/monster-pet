@@ -18,7 +18,8 @@ var buttons := {}
 var info: Label
 var message: Label
 var grid: GridContainer
-var play_bar: HBoxContainer
+var play_bar: VBoxContainer       # 玩小游戏时, 下面换成这个 (小游戏的按钮 + 「不玩了」)
+var play_row: HBoxContainer
 var sitter_button: Button
 var dialog: Control = null       # 现在开着的弹窗
 var dialog_buttons: Array = []   # 弹窗里的按钮 (测试按它们)
@@ -104,19 +105,20 @@ func _build() -> void:
 		grid.add_child(b)
 		buttons[a[0]] = b
 
-	play_bar = HBoxContainer.new()
+	play_bar = VBoxContainer.new()
 	play_bar.position = Vector2(30, 908)
 	play_bar.size = Vector2(660, 312)
-	play_bar.add_theme_constant_override("separation", 20)
+	play_bar.add_theme_constant_override("separation", 16)
 	play_bar.visible = false
 	add_child(play_bar)
-	for d in [[-1, "← 左边"], [1, "右边 →"]]:
-		var b := Button.new()
-		b.text = d[1]
-		b.custom_minimum_size = Vector2(320, 200)
-		b.add_theme_font_size_override("font_size", 40)
-		b.pressed.connect(guess.bind(d[0]))
-		play_bar.add_child(b)
+	play_row = HBoxContainer.new()
+	play_row.add_theme_constant_override("separation", 16)
+	play_bar.add_child(play_row)
+	var quit := Button.new()
+	quit.text = "不玩了"
+	quit.custom_minimum_size = Vector2(660, 76)
+	quit.pressed.connect(quit_play)
+	play_bar.add_child(quit)
 
 
 func _process(delta: float) -> void:
@@ -128,6 +130,10 @@ func _process(delta: float) -> void:
 	_save_timer += delta
 	if _save_timer >= 30.0:
 		_save()
+	if screen.mode == "play" and screen.minigame != null:
+		message.text = screen.minigame.status_text()  # 玩的时候, 下面那行字显示分数
+		if screen.minigame.done:
+			finish_play()
 	queue_redraw()
 
 
@@ -207,8 +213,8 @@ func _info_text() -> String:
 	if pet.is_over():
 		return "%s · %s" % [pet.display_name(), "离开了" if pet.stage == "gone" else "已经不在了"]
 	if pet.sitting():
-		return "%s · %d 岁 · 托人照看中" % [pet.display_name(), pet.age()]
-	return "%s · %d 岁 · %s" % [pet.display_name(), pet.age(), diff]
+		return "%s · %d 岁 · 托人照看中 · 魔晶 %d" % [pet.display_name(), pet.age(), game.money]
+	return "%s · %d 岁 · %s · 魔晶 %d" % [pet.display_name(), pet.age(), diff, game.money]
 
 
 ## 没有新消息的时候, 下面那行显示现在该做什么
@@ -250,15 +256,19 @@ func do_action(id: String) -> void:
 			if game.pet.asleep:
 				text = "它在睡觉, 别吵它"
 			else:
-				_dialog("喂什么?", "", [["饭 (饱一点)", _feed.bind("meal")], ["零食 (开心一点, 会胖)", _feed.bind("snack")],
-					["算了", close_dialog]])
+				var options := [["饭 (免费, 饱一点)", _feed.bind("meal")], ["零食 (免费, 开心一点, 会胖)", _feed.bind("snack")]]
+				for f in Items.of_kinds(["food"]):
+					if int(game.items.get(f, 0)) > 0:
+						options.append(["%s ×%d (%s)" % [Items.name_of(f), game.items[f], Items.food_text(f)], _feed.bind(f)])
+				options.append(["算了", close_dialog])
+				_dialog("喂什么?", "" if options.size() > 3 else "商店 (在「更多」里) 能买更好吃的东西。", options)
 		"lights":
 			text = game.act("lights")
 		"play":
 			game.tick()
 			var r := game.pet.can_play()
 			if r == "ok":
-				screen.start_play()
+				_ask_play()
 			else:
 				text = {"asleep": "它在睡觉, 别吵它", "sick": "它生病了, 不想玩"}.get(r, "")
 		"medicine":
@@ -287,32 +297,97 @@ func _after(text: String) -> void:
 	_say(text)
 
 
+## what: meal 饭 / snack 零食 / 商店买的吃的代号
 func _feed(what: String) -> void:
 	close_dialog()
-	var text := game.act(what)
-	if game.last_result == "ok":
-		screen.show_effect(what)
+	var text := game.act(what) if what in ["meal", "snack"] else game.act("food", what)
+	if game.last_result in ["ok", "bland"]:
+		screen.show_effect(Items.ICON.get(what, what))
 	_after(text)
 
 
-func guess(dir: int) -> void:
-	if screen.guess(dir):
-		for b in play_bar.get_children():
-			b.disabled = true
-		get_tree().create_timer(1.0).timeout.connect(finish_play)
+# ---------------------------------------------------------------- 小游戏和玩具
+
+## 玩什么: 这个阶段能玩的小游戏, 还有买来的玩具
+func _ask_play() -> void:
+	var options := []
+	var lines := ["玩小游戏能赚魔晶。"]
+	for id in MiniGames.unlocked(game.pet.stage):
+		var info := MiniGames.info(id)
+		options.append([info.name, start_play.bind(id)])
+		lines.append("%s: %s" % [info.name, info.help])
+	for toy in Items.of_kinds(["toy"]):
+		if toy in game.owned:
+			var wait := game.toy_wait(toy)
+			options.append(["玩%s%s" % [Items.name_of(toy), "" if wait == 0 else " (%s以后)" % Game.sitter_text(wait)],
+				_play_toy.bind(toy)])
+	options.append(["算了", close_dialog])
+	if game.pet.stage != "adult":
+		lines.append("长大了还有新的小游戏。")
+	_dialog("玩什么?", "\n".join(lines), options)
 
 
-## 小游戏猜完 5 次
+func start_play(id: String, rng_seed := 0) -> void:
+	close_dialog()
+	screen.start_play(id, rng_seed)
+	for b in play_row.get_children():
+		play_row.remove_child(b)
+		b.queue_free()
+	var g := screen.minigame
+	var list := g.buttons()
+	var w := (660.0 - 16.0 * (list.size() - 1)) / list.size()
+	for a in list:
+		var b := Button.new()
+		b.text = a[1]
+		b.custom_minimum_size = Vector2(w, 200)
+		b.add_theme_font_size_override("font_size", 40)
+		if ScreenView.PLAY_COLORS.has(a[0]):
+			var col: Color = ScreenView.PLAY_COLORS[a[0]]
+			b.add_theme_stylebox_override("normal", Look.box(col, 18, Look.INK, 3))
+			b.add_theme_stylebox_override("hover", Look.box(col.lightened(0.15), 18, Look.INK, 3))
+			b.add_theme_stylebox_override("pressed", Look.box(col.darkened(0.15), 18, Look.INK, 3))
+		if g.hold_buttons():
+			b.button_down.connect(play_press.bind(a[0]))
+			b.button_up.connect(play_release.bind(a[0]))
+		else:
+			b.pressed.connect(play_press.bind(a[0]))
+		play_row.add_child(b)
+	_refresh()
+
+
+func play_press(action: String) -> void:
+	if screen.minigame != null:
+		screen.minigame.press(action)
+
+
+func play_release(action: String) -> void:
+	if screen.minigame != null:
+		screen.minigame.release(action)
+
+
+## 小游戏玩完了: 算赢没赢、给魔晶
 func finish_play() -> void:
-	if screen.mode != "play":
+	var g := screen.minigame
+	if screen.mode != "play" or g == null:
 		return
-	var wins := screen.play_wins
-	screen.mode = "pet"
-	for b in play_bar.get_children():
-		b.disabled = false
-	var text := game.act("game", wins)
+	screen.stop_play()
+	var text := game.act("game", {"won": g.won(), "reward": g.reward()})
 	if game.last_result == "won":
 		screen.show_effect("note")
+	_after(text)
+
+
+## 玩到一半不玩了: 不算输赢, 不给魔晶, 也不减体重
+func quit_play() -> void:
+	screen.stop_play()
+	_after("不玩了")
+
+
+func _play_toy(toy: String) -> void:
+	close_dialog()
+	var text := game.act("toy", toy)
+	if game.last_result == "ok":
+		screen.show_effect(Items.ICON[toy])
 	_after(text)
 
 
@@ -351,6 +426,8 @@ func _dialog(title_text: String, body: String, options: Array, extra: Control = 
 		var b := Button.new()
 		b.text = o[0]
 		b.custom_minimum_size = Vector2(0, 84)
+		b.clip_text = true  # 字太长也不会把弹窗撑出屏幕
+		b.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 		b.pressed.connect(o[1])
 		box.add_child(b)
 		dialog_buttons.append(b)
@@ -416,7 +493,7 @@ func _answer_leave(let_go: bool) -> void:
 
 
 func _show_menu() -> void:
-	var options := [["图鉴", _show_dex], ["怎么玩", _show_help]]
+	var options := [["商店", _show_shop], ["装扮", _show_dress], ["图鉴", _show_dex], ["怎么玩", _show_help]]
 	if game.pet != null and game.pet.is_over():
 		options.append(["孵一颗新蛋", _ask_difficulty])
 	if OS.is_debug_build():
@@ -432,6 +509,108 @@ func _fast_forward(seconds: int) -> void:
 	game.fast_forward(seconds)
 	_save()
 	_refresh()
+
+
+## 一格一格的按钮 (商店、装扮里用): items = [[字, 图, 按了做什么, 能不能按], ...]
+func _button_grid(items: Array) -> GridContainer:
+	var g := GridContainer.new()
+	g.columns = 2
+	g.add_theme_constant_override("h_separation", 12)
+	g.add_theme_constant_override("v_separation", 12)
+	for it in items:
+		var b := Button.new()
+		b.text = it[0]
+		if it[1] != null:
+			b.icon = it[1]
+		b.custom_minimum_size = Vector2(290, 96)
+		b.add_theme_font_size_override("font_size", 24)
+		b.alignment = HORIZONTAL_ALIGNMENT_LEFT
+		b.disabled = not it[3]
+		b.pressed.connect(it[2])
+		g.add_child(b)
+		dialog_buttons.append(b)
+	return g
+
+
+static func item_icon(id: String) -> Texture2D:
+	if Items.ICON.has(id):
+		return Art.texture(Items.ICON[id], 5)
+	return Art.swatch(Color(Items.DATA[id].color), 40, 40)
+
+
+func _show_shop() -> void:
+	var options := []
+	for c in Items.SHOP:
+		options.append([c[0], _show_shop_page.bind(c[0])])
+	options.append(["关闭", close_dialog])
+	_dialog("商店", "你有魔晶 %d。玩小游戏能赚魔晶。\n饭、零食、药一直免费; 这里卖更好吃的、玩具、衣服配饰和房间布置。" % game.money, options)
+
+
+func _show_shop_page(category: String) -> void:
+	var kinds: Array = []
+	for c in Items.SHOP:
+		if c[0] == category:
+			kinds = c[1]
+	var cells := []
+	for id in Items.of_kinds(kinds):
+		var d: Dictionary = Items.DATA[id]
+		var line := "%s  %d 魔晶" % [d.name, d.price]
+		var can := true
+		if d.kind == "food":
+			line += "\n%s (有 %d)" % [Items.food_text(id), int(game.items.get(id, 0))]
+			can = int(game.items.get(id, 0)) < Items.MAX_STACK
+		elif id in game.owned:
+			line += "\n已经有了"
+			can = false
+		elif d.kind == "toy":
+			line += "\n陪它玩, 开心 +1"
+		cells.append([line, item_icon(id), _buy.bind(id, category), can])
+	dialog_buttons = []
+	var grid_box := _button_grid(cells)
+	var extra := dialog_buttons.duplicate()
+	_dialog(category, "你有魔晶 %d" % game.money, [["返回", _show_shop], ["关闭", close_dialog]], grid_box)
+	dialog_buttons = extra + dialog_buttons
+
+
+func _buy(id: String, category: String) -> void:
+	var r := game.buy(id)
+	_save()
+	_show_shop_page(category)
+	_say({"ok": "买了%s!" % Items.name_of(id), "poor": "魔晶不够, 去玩小游戏赚一点吧", "have": "已经有了",
+		"full": "%s已经放满了" % Items.name_of(id)}[r])
+	_refresh()
+
+
+func _show_dress() -> void:
+	var options := []
+	for s in Items.SLOTS:
+		var on: String = game.equip.get(s[0], "")
+		options.append(["%s: %s" % [s[1], Items.name_of(on) if on != "" else "没有"], _show_dress_slot.bind(s[0], s[1])])
+	options.append(["关闭", close_dialog])
+	var any := false
+	for id in game.owned:
+		if Items.kind_of(id) != "toy":
+			any = true
+	_dialog("装扮", "衣服、配饰和房间布置只是好看。" + ("" if any else "\n还什么都没有, 先去商店看看吧。"), options)
+
+
+func _show_dress_slot(slot: String, slot_name: String) -> void:
+	var cells := [["不要了", null, _set_equip.bind(slot, ""), game.equip.has(slot)]]
+	for id in Items.of_kinds([slot]):
+		if id in game.owned:
+			var on: bool = game.equip.get(slot, "") == id
+			cells.append([Items.name_of(id) + (" (现在用的)" if on else ""), item_icon(id), _set_equip.bind(slot, id), not on])
+	dialog_buttons = []
+	var grid_box := _button_grid(cells)
+	var extra := dialog_buttons.duplicate()
+	_dialog(slot_name, "" if cells.size() > 1 else "还没有, 去商店买吧。", [["返回", _show_dress], ["关闭", close_dialog]], grid_box)
+	dialog_buttons = extra + dialog_buttons
+
+
+func _set_equip(slot: String, id: String) -> void:
+	game.set_equip(slot, id)
+	_save()
+	_show_dress()
 
 
 func _show_dex() -> void:
@@ -468,8 +647,10 @@ func _show_dex() -> void:
 func _show_help() -> void:
 	_dialog("怎么玩", "它饿了、不开心、睡觉没关灯、无理取闹的时候, 上面的「呼叫」灯会闪。" +
 		"不及时照顾就算一次照顾失误, 失误多少决定它长成哪一种魔物。\n\n" +
-		"喂食: 饭让它饱, 零食让它开心 (会胖)\n玩耍: 猜它往哪边跳, 5 次猜中 3 次就开心\n" +
+		"喂食: 饭让它饱, 零食让它开心 (会胖), 都免费; 商店还有更好吃的\n" +
+		"玩耍: 玩小游戏 (长大了会多几种), 赢了它开心, 还能赚魔晶; 买了玩具也能陪它玩\n" +
 		"吃药: 头上有骷髅就是病了\n打扫: 便便放久了会生病\n管教: 它无理取闹的时候管一管\n开关灯: 它睡着了要关灯\n" +
-		"托人照看: 上学、上班的时候托给别人, 不叫你、不算失误, 每天最多 %s\n\n" % Game.sitter_text(Rules.SITTER_PER_DAY) +
+		"托人照看: 上学、上班的时候托给别人, 不叫你、不算失误, 每天最多 %s\n" % Game.sitter_text(Rules.SITTER_PER_DAY) +
+		"更多: 商店 (用魔晶买东西)、装扮 (帽子、领结、房间布置, 只是好看)、图鉴\n\n" +
 		"它跟着真实的时间长大: 一天长一岁。长大以后它会想出去闯荡, 可以放它走, 也可以留它到老。",
 		[["知道了", close_dialog]])

@@ -1,0 +1,80 @@
+class_name Items
+extends RefCounted
+## 商店里卖的东西 (第二版, 用户 2026-10-25 定的)。钱叫「魔晶」。
+## 照拓麻歌子系列的做法 (On / Meets 那几代): 基本的饭和零食一直免费, 药也不花钱; 商店卖更好吃的、玩具、衣服配饰、房间布置。
+## 衣服、配饰、家具只是好看, 不影响难度 (用户定的)。价钱都是我们定的, 改这里就行。
+##
+## kind: food 吃的 (吃了就没了) / toy 玩具 / hat 帽子 / neck 脖子上的 / wall 墙纸 / rug 地毯 / furniture 家具 (放左边) / decor 墙上挂的
+## food 的效果: hunger 饱几颗心, happy 开心几颗心, weight 胖几克
+
+const START_MONEY := 30            # 第一次玩送的魔晶
+const MAX_STACK := 9               # 同一种吃的最多存几个
+const TOY_COOLDOWN := 3 * 3600     # 一个玩具玩过以后, 过多久它才又想玩 (开心 +1, 不会胖)
+
+const DATA := {
+	"apple": {"name": "苹果", "kind": "food", "price": 8, "hunger": 1, "happy": 1, "weight": 1},
+	"icecream": {"name": "冰淇淋", "kind": "food", "price": 10, "hunger": 0, "happy": 1, "weight": 1},
+	"cake": {"name": "蛋糕", "kind": "food", "price": 15, "hunger": 0, "happy": 2, "weight": 3},
+	"feast": {"name": "大餐", "kind": "food", "price": 20, "hunger": 4, "happy": 0, "weight": 3},
+
+	"ball": {"name": "皮球", "kind": "toy", "price": 40},
+	"blocks": {"name": "积木", "kind": "toy", "price": 60},
+	"pinwheel": {"name": "小风车", "kind": "toy", "price": 80},
+
+	"strawhat": {"name": "草帽", "kind": "hat", "price": 50},
+	"wizardhat": {"name": "魔法帽", "kind": "hat", "price": 120},
+	"crown": {"name": "小王冠", "kind": "hat", "price": 300},
+	"bowtie": {"name": "红领结", "kind": "neck", "price": 40},
+	"scarf": {"name": "毛围巾", "kind": "neck", "price": 70},
+
+	"wall_blue": {"name": "淡蓝墙纸", "kind": "wall", "price": 30, "color": "cfe6f2"},
+	"wall_pink": {"name": "粉色墙纸", "kind": "wall", "price": 30, "color": "f6dbe4"},
+	"wall_yellow": {"name": "淡黄墙纸", "kind": "wall", "price": 30, "color": "f5ecc8"},
+	"rug_red": {"name": "红地毯", "kind": "rug", "price": 40, "color": "c8504a"},
+	"rug_grass": {"name": "绿草地", "kind": "rug", "price": 40, "color": "6fb85a"},
+	"plant": {"name": "盆栽", "kind": "furniture", "price": 50},
+	"bed": {"name": "小床", "kind": "furniture", "price": 100},
+	"painting": {"name": "挂画", "kind": "decor", "price": 60},
+	"window": {"name": "小窗户", "kind": "decor", "price": 80},
+}
+
+## 东西的图 (像素图的名字); 墙纸、地毯用颜色块
+const ICON := {"apple": "apple", "icecream": "icecream", "cake": "cake", "feast": "feast", "ball": "game",
+	"blocks": "blocks", "pinwheel": "pinwheel", "strawhat": "strawhat", "wizardhat": "wizardhat", "crown": "crown",
+	"bowtie": "bowtie", "scarf": "scarf", "plant": "plant", "bed": "bed", "painting": "painting", "window": "window"}
+
+
+## 商店里的分类 (按顺序)
+const SHOP := [["吃的", ["food"]], ["玩具", ["toy"]], ["衣服配饰", ["hat", "neck"]], ["房间", ["wall", "rug", "furniture", "decor"]]]
+## 装扮: 一个地方放一样 (帽子一顶、脖子上一样、墙纸一种……)
+const SLOTS := [["hat", "帽子"], ["neck", "脖子上"], ["wall", "墙纸"], ["rug", "地毯"], ["furniture", "家具"], ["decor", "墙上"]]
+
+
+static func name_of(id: String) -> String:
+	return DATA[id].name
+
+
+static func kind_of(id: String) -> String:
+	return DATA[id].kind
+
+
+static func of_kinds(kinds: Array) -> Array:
+	var out := []
+	for id in DATA:
+		if DATA[id].kind in kinds:
+			out.append(id)
+	return out
+
+
+## 吃的有什么用 (写在商店按钮上)
+static func food_text(id: String) -> String:
+	var d: Dictionary = DATA[id]
+	var parts := []
+	if d.hunger >= 4:
+		parts.append("吃得饱饱的")
+	elif d.hunger > 0:
+		parts.append("饱 +%d" % d.hunger)
+	if d.happy > 0:
+		parts.append("开心 +%d" % d.happy)
+	parts.append("胖 %d 克" % d.weight)
+	return "、".join(parts)

@@ -96,17 +96,42 @@ func test_full_refuses_meal_but_snack_always_works() -> void:
 	eq(p.happy, 4)
 
 
+func test_adults_find_plain_rice_bland() -> void:
+	var p := Helpers.at("huolong")
+	p.hunger = 2
+	eq(p.feed_meal(), "bland", "成年以后嫌白饭没味道 (照 On / Meets)")
+	eq(p.hunger, 3, "但照样吃饱")
+	eq(p.happy, 4, "也不影响开心")
+	var c := Helpers.at("jianjiao")
+	c.hunger = 2
+	eq(c.feed_meal(), "ok", "小时候不嫌弃")
+
+
+func test_eating_shop_food() -> void:
+	var p := Helpers.at("jianjiao")
+	p.hunger = 1
+	p.happy = 1
+	eq(p.eat(Items.DATA.apple), "ok")
+	eq(p.hunger, 2)
+	eq(p.happy, 2)
+	eq(p.eat(Items.DATA.feast), "ok")
+	eq(p.hunger, 4, "大餐一下吃饱")
+	eq(p.eat(Items.DATA.feast), "full", "饱了不吃大餐")
+	eq(p.eat(Items.DATA.cake), "ok", "蛋糕是甜点, 饱了也吃")
+	eq(p.happy, 4)
+
+
 func test_game_win_makes_happy_and_slims() -> void:
 	var p := Helpers.at("jianjiao")
 	p.happy = 1
 	p.weight = 15
-	eq(p.finish_game(3), "won")
+	eq(p.finish_game(true), "won")
 	eq(p.happy, 2)
 	eq(p.weight, 14, "玩一次 -1 克")
-	eq(p.finish_game(2), "lost")
+	eq(p.finish_game(false), "lost")
 	eq(p.happy, 2, "输了不加开心")
 	p.weight = 10
-	p.finish_game(5)
+	p.finish_game(true)
 	eq(p.weight, 10, "不会比基本体重轻")
 	p.sick = true
 	eq(p.can_play(), "sick", "生病了不想玩")

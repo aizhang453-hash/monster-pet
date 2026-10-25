@@ -388,6 +388,31 @@ func feed_meal() -> String:
 	hunger += 1
 	weight += Rules.MEAL_WEIGHT
 	_settle()
+	# 照 On / Meets: 成年以后觉得免费的白饭没味道, 会一脸嫌弃 (但照样吃, 不影响开心和健康)
+	return "bland" if stage == "adult" else "ok"
+
+
+## 吃商店买的东西 (food 是 Items.DATA 里的一条)
+func eat(food: Dictionary) -> String:
+	if not can_act():
+		return "no"
+	if asleep:
+		return "asleep"
+	if food.hunger > 0 and food.happy == 0 and hunger >= 4:
+		return "full"
+	hunger = mini(4, hunger + food.hunger)
+	happy = mini(4, happy + food.happy)
+	weight += food.weight
+	_settle()
+	return "ok"
+
+
+## 陪它玩玩具: 开心 +1, 不会胖 (玩具多久能玩一次由 Game 管)
+func play_toy() -> String:
+	if can_play() != "ok":
+		return can_play()
+	happy = mini(4, happy + 1)
+	_settle()
 	return "ok"
 
 
@@ -420,12 +445,11 @@ func can_play() -> String:
 	return "ok"
 
 
-## 小游戏玩完了: 猜中几次
-func finish_game(wins: int) -> String:
+## 小游戏玩完了: 赢了没有 (每种小游戏怎么算赢在 MiniGames 里)
+func finish_game(won: bool) -> String:
 	if can_play() != "ok":
 		return can_play()
 	weight = maxi(base_weight(), weight - Rules.GAME_WEIGHT)
-	var won := wins >= Rules.GAME_WIN
 	if won:
 		happy = mini(4, happy + 1)
 	_settle()

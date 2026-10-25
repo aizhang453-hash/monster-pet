@@ -4,7 +4,8 @@ extends TestCase
 
 const T0 := Helpers.T0
 const PETS := 2000
-const ACTIONS := ["meal", "snack", "lights", "game", "medicine", "clean", "scold", "leave_yes", "leave_no", "sit", "unsit", "nothing"]
+const ACTIONS := ["meal", "snack", "lights", "game", "medicine", "clean", "scold", "leave_yes", "leave_no", "sit", "unsit",
+	"food", "toy", "nothing"]
 
 var rng := RandomNumberGenerator.new()
 var endings := {}
@@ -52,7 +53,11 @@ func _do(p: Pet, what: String) -> void:
 		"lights":
 			p.toggle_lights()
 		"game":
-			p.finish_game(rng.randi_range(0, 5))
+			p.finish_game(rng.randf() < 0.5)
+		"food":
+			p.eat(Items.DATA[Items.of_kinds(["food"])[rng.randi() % 4]])
+		"toy":
+			p.play_toy()
 		"medicine":
 			p.give_medicine()
 		"clean":

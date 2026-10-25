@@ -84,17 +84,35 @@ func test_play_the_guessing_game() -> void:
 	_start()
 	_later(6 * 60)
 	main.do_action("play")
+	check(main.dialog != null, "先问玩什么")
+	eq(main.dialog_buttons.size(), 2, "宝宝只有猜左右 (加一个「算了」)")
+	main.choose(0)
 	eq(main.screen.mode, "play")
-	main._refresh()
 	check(main.play_bar.visible and not main.grid.visible, "玩的时候换成左右两个按钮")
-	for i in Rules.GAME_ROUNDS:
-		main.screen.play_turn = 0  # 不等动画
-		main.guess(1 if i % 2 == 0 else -1)
-	eq(main.screen.play_round, Rules.GAME_ROUNDS)
-	main.finish_play()
-	eq(main.screen.mode, "pet")
+	eq(main.play_row.get_child_count(), 2)
+	var g: GuessGame = main.screen.minigame
+	for i in GuessGame.ROUNDS:
+		g.turn = 0  # 不等动画
+		main.play_press("left" if i % 2 == 0 else "right")
+	g.step(1.0)
+	check(g.done)
+	var before: int = main.game.money
+	main._process(0.0)
+	eq(main.screen.mode, "pet", "玩完自己回去")
+	eq(main.game.money, before + g.reward(), "赚了魔晶")
 	check(main.message.text.contains("赢了") or main.message.text.contains("输了"), main.message.text)
-	main._refresh()
+	check(main.grid.visible)
+
+
+func test_quit_a_game_halfway() -> void:
+	_start()
+	_later(6 * 60)
+	var w: int = main.game.pet.weight
+	main.do_action("play")
+	main.choose(0)
+	main.quit_play()
+	eq(main.screen.mode, "pet")
+	eq(main.game.pet.weight, w, "不玩了不减体重")
 	check(main.grid.visible)
 
 
@@ -164,6 +182,66 @@ func test_difficulty_text_explains_the_fifteen_minutes() -> void:
 	check(main.dialog_buttons[1].text.contains("原版严格"))
 
 
+func test_shop_and_dress_up() -> void:
+	_start()
+	_later(6 * 60)
+	main.game.money = 500
+	main.do_action("more")
+	main.choose(0)  # 商店
+	has_text(main.dialog.get_child(0).get_child(0).get_child(1).text, "500", "商店里写着有多少魔晶")
+	main.choose(2)  # 衣服配饰
+	main.choose(0)  # 第一样: 草帽
+	check("strawhat" in main.game.owned, "买了草帽")
+	eq(main.game.money, 450)
+	eq(main.game.equip.get("hat", ""), "strawhat", "第一次买帽子直接戴上")
+	check(main.dialog_buttons[0].disabled, "已经有了不能再买")
+	main.close_dialog()
+	main.do_action("more")
+	main.choose(1)  # 装扮
+	main.choose(0)  # 帽子
+	main.choose(0)  # 不要了
+	check(not main.game.equip.has("hat"), "摘下了帽子")
+	main.close_dialog()
+	main.do_action("more")
+	main.choose(0)
+	main.choose(0)  # 吃的
+	main.choose(0)  # 苹果
+	eq(int(main.game.items.get("apple", 0)), 1)
+	main.close_dialog()
+	main.do_action("feed")
+	var texts := []
+	for b in main.dialog_buttons:
+		texts.append(b.text)
+	check(texts.any(func(s): return s.begins_with("苹果")), "喂食里多了苹果: %s" % [texts])
+	main.choose(2)
+	eq(int(main.game.items.get("apple", 0)), 0, "吃掉了")
+
+
+func test_toys_in_play_menu() -> void:
+	_start()
+	_later(6 * 60)
+	main.game.owned.append("ball")
+	main.game.pet.happy = 1
+	main.do_action("play")
+	main.choose(1)  # 玩皮球
+	eq(main.game.pet.happy, 2, "玩皮球开心 +1")
+	main.do_action("play")
+	has_text(main.dialog_buttons[1].text, "以后", "刚玩过要等一会儿")
+
+
+func test_child_has_two_games() -> void:
+	_start()
+	_later(6 * 60 + 3600)
+	eq(main.game.pet.stage, "child")
+	main.do_action("play")
+	eq(main.dialog_buttons.size(), 3, "小孩: 猜左右、接果子, 加「算了」")
+	main.choose(1)
+	eq(main.screen.minigame.id, "catch")
+	check(main.screen.minigame.hold_buttons())
+	main._process(0.1)
+	has_text(main.message.text, "接住", "玩的时候下面那行显示分数")
+
+
 func test_buttons_off_after_the_end() -> void:
 	_start()
 	_later(6 * 60)
@@ -187,9 +265,14 @@ func test_random_tapping() -> void:
 			else:
 				main.close_dialog()
 		elif main.screen.mode == "play":
-			main.screen.play_turn = 0
-			if main.guess(1 if rng.randf() < 0.5 else -1) or main.screen.play_round >= Rules.GAME_ROUNDS:
-				main.finish_play()
+			var g: MiniGame = main.screen.minigame
+			var b: Array = g.buttons()
+			main.play_press(b[rng.randi() % b.size()][0])
+			if rng.randf() < 0.3:
+				main.play_release(b[rng.randi() % b.size()][0])
+			g.step(rng.randf_range(0.1, 2.0))
+			if rng.randf() < 0.03:
+				main.quit_play()
 		elif r < 0.6:
 			main.do_action(ids[rng.randi() % ids.size()])
 		else:

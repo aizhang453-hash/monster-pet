@@ -61,7 +61,7 @@ func _care(p: Pet) -> void:
 		if p.lights:
 			p.toggle_lights()
 		return
-	while p.hunger < 4 and p.feed_meal() == "ok":
+	while p.hunger < 4 and p.feed_meal() in ["ok", "bland"]:
 		pass
 	while p.happy < 4 and p.feed_snack() == "ok":
 		pass
