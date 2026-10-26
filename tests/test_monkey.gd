@@ -5,7 +5,7 @@ extends TestCase
 const T0 := Helpers.T0
 const PETS := 2000
 const ACTIONS := ["meal", "snack", "lights", "game", "medicine", "clean", "scold", "leave_yes", "leave_no", "sit", "unsit",
-	"food", "toy", "hotel", "unhotel", "move", "praise", "pat", "study", "job", "work", "nothing"]
+	"food", "toy", "hotel", "unhotel", "move", "praise", "pat", "study", "job", "work", "train", "soil", "nothing"]
 
 var rng := RandomNumberGenerator.new()
 var endings := {}
@@ -55,7 +55,8 @@ func _do(p: Pet, what: String) -> void:
 		"game":
 			p.finish_game(rng.randf() < 0.5)
 		"food":
-			p.eat(Items.DATA[Items.of_kinds(["food"])[rng.randi() % 4]])
+			var foods := Items.of_kinds(["food"])
+			p.eat(Items.DATA[foods[rng.randi() % foods.size()]])
 		"toy":
 			p.play_toy()
 		"hotel":
@@ -74,6 +75,10 @@ func _do(p: Pet, what: String) -> void:
 			p.take_job(School.JOB_ORDER[rng.randi() % School.JOB_ORDER.size()])
 		"work":
 			p.work_done(rng.randf() < 0.5)
+		"train":
+			p.train(Training.STATS.keys()[rng.randi() % 3])
+		"soil":
+			p.soil()
 		"medicine":
 			p.give_medicine()
 		"clean":
@@ -97,6 +102,7 @@ func _check(p: Pet, last_now: int) -> void:
 	check(p.happy >= 0 and p.happy <= 4, "%s 开心 %d" % [where, p.happy])
 	check(p.discipline >= 0 and p.discipline <= 4, "%s 管教 %d" % [where, p.discipline])
 	check(p.poop >= 0 and p.poop <= Rules.MAX_POOP, "%s 便便 %d" % [where, p.poop])
+	check(p.tidy >= 0 and p.tidy <= 4, "%s 干净 %d" % [where, p.tidy])
 	check(p.mistakes >= 0 and p.mistakes_life >= p.mistakes, "%s 失误 %d/%d" % [where, p.mistakes, p.mistakes_life])
 	check(p.medicine_left >= 0 and p.medicine_left <= 2, "%s 药 %d" % [where, p.medicine_left])
 	check(Species.DATA.has(p.species), "%s 种类认识" % where)

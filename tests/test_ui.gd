@@ -33,6 +33,22 @@ func _start(diff_button := 0) -> void:
 	main.game.pet.tz = 0
 
 
+## 按弹窗里字是这样开头的按钮
+func _pick(text: String) -> void:
+	for i in main.dialog_buttons.size():
+		if main.dialog_buttons[i].text.begins_with(text):
+			main.choose(i)
+			return
+	check(false, "没有「%s」按钮" % text)
+
+
+func _button_texts() -> Array:
+	var texts := []
+	for b in main.dialog_buttons:
+		texts.append(b.text)
+	return texts
+
+
 func _later(seconds: int) -> void:
 	main.game.offset += seconds
 	main.game.tick()
@@ -111,7 +127,7 @@ func test_status_and_lights_and_clean() -> void:
 	main.do_action("lights")
 	check(main.game.pet.lights)
 	main.do_action("clean")
-	has_text(main.message.text, "没有便便")
+	has_text(main.message.text, "很干净")
 
 
 func test_play_the_guessing_game() -> void:
@@ -119,8 +135,8 @@ func test_play_the_guessing_game() -> void:
 	_later(6 * 60)
 	main.do_action("play")
 	check(main.dialog != null, "先问玩什么")
-	eq(main.dialog_buttons.size(), 2, "宝宝只有猜左右 (加一个「算了」)")
-	main.choose(0)
+	eq(_button_texts(), ["猜左右", "猜数字", "跳绳", "爬高", "算了"], "宝宝的四个小游戏 (第六版多了三个), 加一个「算了」")
+	_pick("猜左右")
 	eq(main.screen.mode, "play")
 	check(main.play_bar.visible and not main.grid.visible, "玩的时候换成左右两个按钮")
 	eq(main.play_row.get_child_count(), 2)
@@ -258,19 +274,21 @@ func test_toys_in_play_menu() -> void:
 	main.game.owned.append("ball")
 	main.game.pet.happy = 1
 	main.do_action("play")
-	main.choose(1)  # 玩皮球
+	_pick("玩皮球")
 	eq(main.game.pet.happy, 2, "玩皮球开心 +1")
 	main.do_action("play")
-	has_text(main.dialog_buttons[1].text, "以后", "刚玩过要等一会儿")
+	var texts := _button_texts()
+	has_text(texts[texts.size() - 2], "小时后", "刚玩过要等一会儿 (玩具在最后, 「算了」前面)")
 
 
-func test_child_has_two_games() -> void:
+func test_child_play_menu() -> void:
 	_start()
 	_later(6 * 60 + 3600)
 	eq(main.game.pet.stage, "child")
 	main.do_action("play")
-	eq(main.dialog_buttons.size(), 4, "小孩: 猜左右、接果子、训练, 加「算了」")
-	main.choose(1)
+	eq(_button_texts(), ["猜左右", "猜数字", "跳绳", "爬高", "接果子", "拔河", "模仿", "训练", "算了"],
+		"小孩: 宝宝的四个 + 接果子、拔河、模仿, 还有训练, 加「算了」")
+	_pick("接果子")
 	eq(main.screen.minigame.id, "catch")
 	check(main.screen.minigame.hold_buttons())
 	main._process(0.1)
@@ -354,7 +372,7 @@ func test_training_from_the_play_menu() -> void:
 	_later(6 * 60 + 3600)
 	_feed_up()
 	main.do_action("play")
-	main.choose(2)  # 训练
+	_pick("训练")
 	has_text(main.dialog.get_child(0).get_child(0).get_child(0).text, "练什么")
 	main.choose(0)  # 举重
 	check(main.game.pet.power >= 3, "力气涨了")

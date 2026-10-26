@@ -18,8 +18,8 @@ const GOOD_CLASS := 4               # 答对几题算「很认真」, 可以夸�
 ## 工作: 名字、要的本事 (聪明 时尚 善良 力气 速度 防御)、上班玩哪个小游戏、做完给多少魔晶 (输了给一半)
 const JOBS := {
 	"helper": {"name": "杂工", "need": {}, "game": "guess", "pay": 15},
-	"courier": {"name": "快递员", "need": {"speed": 30}, "game": "catch", "pay": 25},
-	"cook": {"name": "厨师", "need": {"kind": 20, "style": 10}, "game": "catch", "pay": 25},
+	"courier": {"name": "快递员", "need": {"speed": 30}, "game": "sprint", "pay": 25},
+	"cook": {"name": "厨师", "need": {"kind": 20, "style": 10}, "game": "burger", "pay": 25},
 	"guard": {"name": "保镖", "need": {"power": 40, "guard": 40}, "game": "jump", "pay": 35},
 	"designer": {"name": "设计师", "need": {"style": 40}, "game": "quiz_style", "pay": 35},
 	"teacher": {"name": "老师", "need": {"smart": 40, "kind": 20}, "game": "quiz_smart", "pay": 35},

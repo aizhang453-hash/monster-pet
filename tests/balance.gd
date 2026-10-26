@@ -68,6 +68,7 @@ func _care(p: Pet) -> void:
 	while p.sick and p.give_medicine() != "healthy":
 		pass
 	p.clean()
+	p.clean()  # 第六版: 清完便便再洗澡
 	if p.call == "discipline":
 		p.scold()
 	if p.call == "good":

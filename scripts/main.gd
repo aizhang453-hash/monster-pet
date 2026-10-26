@@ -163,7 +163,9 @@ func _process(delta: float) -> void:
 		_say(_battle_text)  # 比赛的画面放完了再说结果
 		_battle_text = ""
 	if screen.mode == "play" and screen.minigame != null:
-		message.text = screen.minigame.status_text()  # 玩的时候, 下面那行字显示分数
+		# 玩的时候, 下面那行字显示分数; 刚开始两秒半先说怎么玩
+		var info := MiniGames.info(screen.minigame.id)
+		message.text = info.help if screen.minigame.t < 2.5 and not info.is_empty() else screen.minigame.status_text()
 		if screen.minigame.buttons_version != _play_version:
 			_build_play_row()
 		if screen.minigame.done:
@@ -276,6 +278,11 @@ func _hint() -> String:
 		return "有新的信, 在「更多」→ 信箱"
 	if pet.stage == "egg":
 		return "蛋在动…… 等它孵出来"
+	if pet.tidy == 0:
+		return "它身上脏兮兮的, 按「打扫」给它洗个澡"
+	var fest := game.festival()
+	if fest != "":
+		return "今天是%s!" % Festivals.name_of(fest)
 	return ""
 
 
@@ -319,6 +326,8 @@ func do_action(id: String) -> void:
 				screen.show_effect("medicine")
 		"clean":
 			text = game.act("clean")
+			if game.last_result == "bath":
+				screen.show_effect("bubble")
 		"status":
 			screen.show_status()
 		"scold":
@@ -365,7 +374,10 @@ func go_out(id: String) -> void:
 	close_dialog()
 	var out := game.go_out(id)
 	if out.get("ok", false):
-		screen.show_outing(id, out.npc, out.item)
+		var icon: String = out.item
+		if out.get("souvenir", "") != "":
+			icon = Items.SOUVENIRS[out.souvenir].icon
+		screen.show_outing(id, out.npc, icon)
 	_after(out.text)
 
 
@@ -576,25 +588,24 @@ func _feed(what: String) -> void:
 
 ## 玩什么: 这个阶段能玩的小游戏, 还有买来的玩具
 func _ask_play() -> void:
-	var options := []
-	var lines := ["玩小游戏能赚魔晶。"]
+	# 第六版小游戏多了, 改成一格一格的 (三列), 按了再在屏幕下面那行说怎么玩
+	var cells := []
 	for id in MiniGames.unlocked(game.pet.stage):
-		var info := MiniGames.info(id)
-		options.append([info.name, start_play.bind(id)])
-		lines.append("%s: %s" % [info.name, info.help])
+		cells.append([MiniGames.info(id).name, null, start_play.bind(id), true])
 	if game.pet.stage != "baby":
-		options.append(["训练 (练本事)", _ask_train])
+		cells.append(["训练", null, _ask_train, true])
 	if game.pet.stage in ["teen", "adult"]:
-		options.append(["比赛", _ask_compete])
+		cells.append(["比赛", null, _ask_compete, true])
 	for toy in Items.of_kinds(["toy"]):
 		if toy in game.owned:
 			var wait := game.toy_wait(toy)
-			options.append(["玩%s%s" % [Items.name_of(toy), "" if wait == 0 else " (%s以后)" % Game.sitter_text(wait)],
-				_play_toy.bind(toy)])
-	options.append(["算了", close_dialog])
-	if game.pet.stage != "adult":
-		lines.append("长大了还有新的小游戏。")
-	_dialog("玩什么?", "\n".join(lines), options)
+			cells.append(["玩%s%s" % [Items.name_of(toy), "" if wait == 0 else "\n(%s后)" % Game.sitter_text(wait)], null,
+				_play_toy.bind(toy), true])
+	dialog_buttons = []
+	var grid_box := _button_grid(cells, 3)
+	var extra := dialog_buttons.duplicate()
+	_dialog("玩什么?", "玩小游戏能赚魔晶。" + ("长大了还有新的小游戏。" if game.pet.stage != "adult" else ""), [["算了", close_dialog]], grid_box)
+	dialog_buttons = extra + dialog_buttons
 
 
 func start_play(id: String, rng_seed := 0, hard := false) -> void:
@@ -788,7 +799,8 @@ func _answer_leave(let_go: bool) -> void:
 
 func _show_menu() -> void:
 	var mail := "信箱" + (" (%d 封新信)" % game.unread() if game.unread() > 0 else "")
-	var options := [["商店", _show_shop], ["装扮", _show_dress], ["图鉴", _show_dex], [mail, _show_mail], ["怎么玩", _show_help]]
+	var options := [["商店", _show_shop], ["装扮", _show_dress], ["图鉴", _show_dex], ["纪念品", _show_souvenirs], [mail, _show_mail],
+		["怎么玩", _show_help]]
 	if game.places.size() > 1 and game.pet != null and not game.pet.is_over():
 		options.insert(2, ["搬家", _ask_move])
 	if game.pet != null and game.pet.is_over():
@@ -809,9 +821,9 @@ func _fast_forward(seconds: int) -> void:
 
 
 ## 一格一格的按钮 (商店、装扮里用): items = [[字, 图, 按了做什么, 能不能按], ...]
-func _button_grid(items: Array) -> GridContainer:
+func _button_grid(items: Array, columns := 2) -> GridContainer:
 	var g := GridContainer.new()
-	g.columns = 2
+	g.columns = columns
 	g.add_theme_constant_override("h_separation", 12)
 	g.add_theme_constant_override("v_separation", 12)
 	for it in items:
@@ -819,9 +831,10 @@ func _button_grid(items: Array) -> GridContainer:
 		b.text = it[0]
 		if it[1] != null:
 			b.icon = it[1]
-		b.custom_minimum_size = Vector2(290, 96)
-		b.add_theme_font_size_override("font_size", 24)
-		b.alignment = HORIZONTAL_ALIGNMENT_LEFT
+		b.custom_minimum_size = Vector2(290, 96) if columns == 2 else Vector2(188, 84)
+		b.add_theme_font_size_override("font_size", 24 if columns == 2 else 26)
+		b.alignment = HORIZONTAL_ALIGNMENT_LEFT if columns == 2 else HORIZONTAL_ALIGNMENT_CENTER
+		b.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART  # 字太长就换行, 不把弹窗撑出屏幕
 		b.disabled = not it[3]
 		b.pressed.connect(it[2])
 		g.add_child(b)
@@ -849,9 +862,14 @@ func _show_shop_page(category: String) -> void:
 		if c[0] == category:
 			kinds = c[1]
 	var cells := []
+	var fest := game.festival()
 	for id in Items.of_kinds(kinds):
 		var d: Dictionary = Items.DATA[id]
+		if d.has("festival") and d.festival != fest:
+			continue  # 第六版: 节日的吃的只在过节那天卖
 		var line := "%s  %d 魔晶" % [d.name, d.price]
+		if d.has("festival"):
+			line = "%s (限定)  %d 魔晶" % [d.name, d.price]
 		var can := true
 		if d.kind == "food":
 			line += "\n%s (有 %d)" % [Items.food_text(id), int(game.items.get(id, 0))]
@@ -962,18 +980,56 @@ func _show_dex() -> void:
 		[game.history.size(), "、".join(cups) if not cups.is_empty() else "还没有"], [["关闭", close_dialog]], scroll)
 
 
+## 第六版: 纪念品柜 (有的亮着, 没有的是黑影, 写着在哪里能得到)
+func _show_souvenirs() -> void:
+	var g := GridContainer.new()
+	g.columns = 3
+	g.add_theme_constant_override("h_separation", 16)
+	g.add_theme_constant_override("v_separation", 10)
+	var have := 0
+	for id in Items.SOUVENIRS:
+		var d: Dictionary = Items.SOUVENIRS[id]
+		var got := int(game.souvenirs.get(id, 0))
+		if got > 0:
+			have += 1
+		var cell := VBoxContainer.new()
+		cell.custom_minimum_size = Vector2(186, 0)
+		var pic := TextureRect.new()
+		pic.texture = Art.texture(d.icon, 7, Color.WHITE if got > 0 else Color(0.15, 0.13, 0.2))
+		pic.stretch_mode = TextureRect.STRETCH_KEEP_CENTERED
+		pic.custom_minimum_size = Vector2(80, 64)
+		cell.add_child(pic)
+		var name_label := Label.new()
+		name_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		name_label.add_theme_font_size_override("font_size", 22)
+		if got > 0:
+			name_label.text = "%s ×%d" % [d.name, got] if got > 1 else d.name
+		else:
+			name_label.text = "？？？\n(%s)" % d.from
+			name_label.add_theme_color_override("font_color", Look.TEXT_DIM)
+		cell.add_child(name_label)
+		g.add_child(cell)
+	var scroll := ScrollContainer.new()
+	scroll.custom_minimum_size = Vector2(600, 700)
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	scroll.add_child(g)
+	_dialog("纪念品 %d/%d" % [have, Items.SOUVENIRS.size()], "出门有时会带回那个地方的纪念品; 过节那天打开游戏, 会收到节日礼物和节日的纪念品。",
+		[["关闭", close_dialog]], scroll)
+
+
 func _show_help() -> void:
 	_dialog("怎么玩", "它饿了、不开心、睡觉没关灯、无理取闹的时候, 上面的「呼叫」灯会闪。" +
 		"不及时照顾就算一次照顾失误, 失误多少决定它长成哪一种魔物。\n\n" +
 		"喂食: 饭让它饱, 零食让它开心 (会胖), 都免费; 商店还有更好吃的\n" +
 		"玩耍: 玩小游戏 (长大了会多几种), 赢了它开心, 还能赚魔晶; 买了玩具也能陪它玩\n" +
-		"吃药: 头上有骷髅就是病了\n打扫: 便便放久了会生病\n管教: 它无理取闹的时候管一管\n开关灯: 它睡着了要关灯\n" +
+		"吃药: 头上有骷髅就是病了\n打扫: 便便放久了会生病; 没有便便的时候, 按打扫给它洗澡 (脏到底它会不开心)\n管教: 它无理取闹的时候管一管\n开关灯: 它睡着了要关灯\n" +
 		"托人照看: 上学、上班的时候托给别人, 不叫你、不算失误, 每天最多 %s\n" % Game.sitter_text(Rules.SITTER_PER_DAY) +
-		"更多: 商店 (用魔晶买东西)、装扮 (帽子、领结、房间布置, 只是好看)、图鉴、搬家\n" +
+		"更多: 商店 (用魔晶买东西)、装扮 (帽子、领结、房间布置, 只是好看)、图鉴、纪念品、信箱、搬家\n" +
 		"出门: 小孩起能去公园、森林、湖边、夜市逛 (有的要先解锁), 还能花魔晶住旅馆\n" +
 		"住的地方: 草原、湖泊、天空岛各有一套魔物, 养大一只成年就打开一个新地方\n" +
 		"训练和比赛 (在「玩耍」里): 练力气、速度、防御, 少年起去比赛, 赢了拿奖杯和魔晶; 「状态」按两下看本事\n" +
 		"上学和上班 (在「出门」里): 小孩和少年上课练聪明、时尚、善良; 成年找工作、上班赚魔晶\n" +
+		"节日: 新年、春节、儿童节、中秋、万圣节、圣诞节那天打开游戏, 有礼物、纪念品, 商店有节日的吃的\n" +
 		"管教: 无理取闹的时候骂它, 做了好事的时候夸它。用手指点它, 可以摸摸它\n\n" +
 		"它跟着真实的时间长大: 一天长一岁。长大以后它会想出去闯荡, 可以放它走, 也可以留它到老。",
 		[["知道了", close_dialog]])

@@ -3,7 +3,7 @@ extends SceneTree
 ##   /Applications/Godot.app/Contents/MacOS/Godot --path . -s tests/screenshots.gd -- 存图的文件夹
 ## 假屏幕 (--headless) 画不出东西, 要开真窗口。存档放临时文件夹, 时间钉住, 不碰真的存档和钟。
 
-const T0 := 1767225600 + 10 * 3600
+const T0 := 1767225600 + 5 * 86400 + 10 * 3600   # 2026-01-06 (不是节日)
 
 var out := ""
 var main: Node
@@ -36,6 +36,96 @@ func _later(seconds: int) -> void:
 	main.game.offset += seconds
 	main.game.tick()
 	main._refresh()
+
+
+## 玩一个小游戏: 先让它走 frames 帧 (每帧 0.05 秒), 中间按 presses 里的 [第几帧, 按什么]
+func _play(id: String, frames: int, presses := [], name := "") -> void:
+	main.start_play(id, 3)
+	var g: MiniGame = main.screen.minigame
+	for i in frames:
+		for pr in presses:
+			if pr[0] == i:
+				main.play_press(pr[1])
+		g.step(0.05)
+	main.screen.t += 3.0  # 跳过一开始那 2.5 秒的说明, 下面那行显示分数
+	main._process(0.0)
+	await _shot(name)
+	main.quit_play()
+
+
+func _v6_games() -> void:
+	main.do_action("play")
+	await _shot("53_玩什么_十三个小游戏")
+	main.close_dialog()
+	await _play("number", 2, [[1, "big"]], "54_猜数字")
+	await _play("rope", 12, [[4, "jump"]], "55_跳绳")
+	await _play("climb", 10, [[1, "l"], [2, "r"], [3, "l"], [4, "r"], [5, "l"], [6, "r"], [7, "l"]], "56_爬高")
+	var pulls := []
+	for i in 40:
+		if i % 3 == 0:
+			pulls.append([i, "pull"])
+	await _play("tug", 40, pulls, "57_拔河")
+	await _play("mimic", 5, [], "58_模仿")
+	await _play("flag", 16, [[14, "red"]], "59_举旗")
+	var runs := []
+	for i in 60:
+		if i % 4 == 0:
+			runs.append([i, "run"])
+	await _play("sprint", 60, runs, "60_赛跑")
+	await _play("dance", 40, [], "61_跳舞")
+	await _play("burger", 10, [[2, "bun"]], "62_做汉堡")
+
+
+func _v6_festivals() -> void:
+	var g: Game = main.game
+	g.offset = 0
+	g.fixed_time = Time.get_unix_time_from_datetime_dict({"year": 2026, "month": 12, "day": 25, "hour": 10})
+	g.pet = Helpers.at("huolong", Rules.EASY, g.fixed_time)
+	main.screen.pet_x = 14
+	g.tick()
+	main._refresh()
+	await _shot("63_圣诞节")
+	for f in [[2027, 2, 6, "64_春节"], [2026, 10, 31, "65_万圣节"], [2026, 9, 25, "66_中秋"]]:
+		g.fixed_time = Time.get_unix_time_from_datetime_dict({"year": f[0], "month": f[1], "day": f[2], "hour": 10})
+		g.pet = Helpers.at("linlu", Rules.EASY, g.fixed_time)
+		g.tick()
+		main._refresh()
+		await _shot(f[3])
+	main._show_shop_page("吃的")
+	await _shot("67_中秋的商店")
+	main.close_dialog()
+	for s in ["pebble", "shell", "key", "firework", "fu", "pumpkin", "snowman"]:
+		g.add_souvenir(s)
+	g.add_souvenir("pebble")
+	main._show_souvenirs()
+	await _shot("68_纪念品")
+	main.close_dialog()
+	g.fixed_time = T0
+	g.pet = Helpers.at("huolong", Rules.EASY, T0)
+	g.pet.tidy = 0
+	main._refresh()
+	await _shot("69_脏兮兮")
+	main.screen.mode = "status"
+	main.screen.status_page = 1
+	main.screen.status_until = main.screen.t + 99
+	g.pet.tidy = 2
+	g.pet.discipline = 3
+	await _shot("70_状态第一页_干净")
+	main.screen.mode = "pet"
+	main.do_action("clean")
+	await _shot("71_洗澡")
+	g.outings = ["park", "forest", "lakeside", "night", "hotel"]
+	g.rng.seed = 1
+	for i in 20:
+		g.out_at.clear()
+		var out := g.go_out("forest")
+		if out.souvenir != "":
+			main.screen.show_outing("forest", "", Items.SOUVENIRS[out.souvenir].icon)
+			main._say(out.text)
+			break
+	main.screen.t = main.screen.out_until - 1.0
+	await _shot("72_森林带回松果")
+	main.screen.mode = "pet"
 
 
 func _run() -> void:
@@ -292,6 +382,9 @@ func _run() -> void:
 	main._read_letter(main.game.letters.size() - 1)
 	await _shot("52_看信")
 	main.close_dialog()
+	# 第六版: 九个新小游戏
+	await _v6_games()
+	await _v6_festivals()
 	# 开始界面: 养着魔物的时候
 	var again = load("res://scenes/main.tscn").instantiate()
 	main.game.offset = main.game.clock() - int(Time.get_unix_time_from_system())  # 再打开的那个看真的钟, 拨到一样的时间

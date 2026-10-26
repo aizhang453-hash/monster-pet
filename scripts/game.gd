@@ -28,6 +28,9 @@ var stats := {}             # 解锁要数的东西: park 去公园几次, apple
 var trophies := {}          # 第四版: 奖杯 (级别 0–4 -> 拿过几个, 跟着主人)
 var letters: Array = []     # 第五版: 收到的信 {title, body, at, read}, 新的在后面
 var pending_letters: Array = []   # 还没寄到的信 {at, title, body} (比如放走的魔物过一天寄回来)
+# 第六版: 节日、纪念品 (跟着主人)
+var celebrated := {}        # 哪年哪个节已经收过礼物 ("spring2026" -> true)
+var souvenirs := {}         # 纪念品: 代号 -> 有几个
 var rng := RandomNumberGenerator.new()
 
 
@@ -63,6 +66,7 @@ func tick(t := -1) -> void:
 	pet.advance(clock() if t < 0 else t)
 	_take_events()
 	_deliver_letters()
+	_celebrate(clock() if t < 0 else t)
 
 
 func _take_events() -> void:
@@ -182,7 +186,8 @@ func act(what: String, arg: Variant = null) -> String:
 			text = {"healthy": "它没生病, 不用吃药", "more": "吃了药, 还要再吃一次", "cured": "病好了!"}.get(r, "")
 		"clean":
 			r = pet.clean()
-			text = {"nothing": "没有便便要打扫", "ok": "打扫干净了"}.get(r, "")
+			text = {"nothing": "很干净, 不用打扫", "ok": "打扫干净了" + (" (身上也有点脏, 再按一次给它洗澡)" if pet.tidy < 4 else ""),
+				"bath": "洗了个澡, 香喷喷的!"}.get(r, "")
 		"scold":
 			r = pet.scold()
 			text = {"good": "管教了它, 它乖了一点", "sad": "它没闹, 被骂了很委屈 (不开心 -1)"}.get(r, "")
@@ -222,6 +227,9 @@ func act(what: String, arg: Variant = null) -> String:
 			if pet.in_hotel():
 				r = pet.end_hotel("pickup")
 				text = "从旅馆接回来了"
+				if rng.randf() < SOUVENIR_CHANCE:
+					add_souvenir("key")
+					text += ", 还带回了纪念品「%s」" % Items.SOUVENIRS.key.name
 			elif pet.sitting():
 				r = pet.end_sitter()
 				text = "接回来了, 照看的人把它喂得饱饱的"
@@ -304,7 +312,7 @@ func go_out(id: String) -> Dictionary:
 	var local_hour := posmod(floori(float(now + tz) / 3600.0), 24)
 	_unlock_outing("night", local_hour >= 19 and local_hour < 21)
 	var fresh := now - int(out_at.get(id, -Outings.COOLDOWN)) >= Outings.COOLDOWN
-	var out := {"text": "", "npc": "", "item": "", "ok": true}
+	var out := {"text": "", "npc": "", "item": "", "ok": true, "souvenir": ""}
 	match id:
 		"park":
 			stats["park"] = int(stats.get("park", 0)) + 1
@@ -352,10 +360,60 @@ func go_out(id: String) -> Dictionary:
 				out.text = "逛了逛夜市, 好热闹"
 	if fresh and id != "hotel":
 		out_at[id] = now
+		# 第六版: 偶尔带回那个地方的纪念品
+		if rng.randf() < SOUVENIR_CHANCE:
+			var s: String = Items.OUTING_SOUVENIR[id]
+			add_souvenir(s)
+			out.souvenir = s
+			out.text += " 还带回了纪念品「%s」!" % Items.SOUVENIRS[s].name
+	pet.soil()  # 出门玩脏了
 	pet._settle()
 	_take_events()
 	last_result = "ok"
 	return out
+
+
+# ---------------------------------------------------------------- 第六版: 节日、纪念品
+
+## 出门有收获的时候, 带回纪念品的机会 (我们定的)
+const SOUVENIR_CHANCE := 0.3
+
+
+## 今天是什么节 (本地日期; 不是节日回空)
+func festival() -> String:
+	_refresh_tz()
+	return Festivals.today(clock(), tz)
+
+
+## 过节: 这个节今年第一次打开游戏, 送礼物和一件纪念品
+func _celebrate(t: int) -> void:
+	var id := Festivals.today(t, tz)
+	if id == "":
+		return
+	var year: int = Time.get_datetime_dict_from_unix_time(t + tz).year
+	var key := "%s%d" % [id, year]
+	if celebrated.has(key):
+		return
+	celebrated[key] = true
+	var gift: Dictionary = Festivals.GIFTS[id]
+	money += int(gift.get("money", 0))
+	var food: Dictionary = gift.get("items", {})
+	for f in food:
+		items[f] = mini(Items.MAX_STACK, int(items.get(f, 0)) + int(food[f]))
+	var text: String = gift.text
+	if gift.get("toy", false):
+		for toy in Items.of_kinds(["toy"]):
+			if not toy in owned:
+				owned.append(toy)
+				text += ": %s" % Items.name_of(toy)
+				break
+	var s: String = Festivals.LIST[id].souvenir
+	add_souvenir(s)
+	messages.append({"text": "%s。还得到纪念品「%s」!" % [text, Items.SOUVENIRS[s].name], "rank": 5})
+
+
+func add_souvenir(id: String) -> void:
+	souvenirs[id] = int(souvenirs.get(id, 0)) + 1
 
 
 # ---------------------------------------------------------------- 第五版: 信
@@ -508,10 +566,10 @@ func take_messages() -> Array:
 # ---------------------------------------------------------------- 存档
 
 func to_dict() -> Dictionary:
-	return {"version": 5, "pet": pet.to_dict() if pet != null else null, "dex": dex, "history": history,
+	return {"version": 6, "pet": pet.to_dict() if pet != null else null, "dex": dex, "history": history,
 		"offset": offset, "difficulty": difficulty, "money": money, "items": items, "owned": owned, "equip": equip,
 		"toy_used": toy_used, "places": places, "outings": outings, "out_at": out_at, "stats": stats, "trophies": trophies,
-		"letters": letters, "pending_letters": pending_letters}
+		"letters": letters, "pending_letters": pending_letters, "celebrated": celebrated, "souvenirs": souvenirs}
 
 
 static func from_dict(d: Dictionary) -> Game:
@@ -560,6 +618,12 @@ static func from_dict(d: Dictionary) -> Game:
 	for l in d.get("pending_letters", []):
 		if l is Dictionary:
 			g.pending_letters.append({"at": int(l.get("at", 0)), "title": str(l.get("title", "")), "body": str(l.get("body", ""))})
+	# 第六版加的
+	for k in d.get("celebrated", {}):
+		g.celebrated[str(k)] = true
+	for k in d.get("souvenirs", {}):
+		if Items.SOUVENIRS.has(k):
+			g.souvenirs[str(k)] = int(d.souvenirs[k])
 	g._unlock_places()  # 以前版本养大过成年的, 直接打开新地方
 	g.messages.clear()
 	return g

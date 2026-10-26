@@ -35,6 +35,9 @@ const TANTRUM_GAP := [3 * HOUR, 8 * HOUR]
 const GOOD_GAP := [4 * HOUR, 10 * HOUR]
 ## 摸摸它 (第五版): 隔多久摸一次才加开心
 const PAT_COOLDOWN := 2 * HOUR
+## 洗澡 (第六版, 学拓麻歌子 On / Meets 会弄脏、要洗澡): 「干净」0–4 格, 醒着的时候隔这么久少一格 (每天醒来重新算);
+## 练完、比完、上完班、出门也会脏一格。脏到 0 格还不洗, 每隔这么久开心 -1 (不叫你、不算失误)。数字是我们定的
+const DIRTY_EVERY := {STRICT: 3 * HOUR, EASY: 6 * HOUR}
 
 ## 生病
 const POOP_SICK := {STRICT: 3 * HOUR, EASY: 8 * HOUR}     # 便便放多久没清会生病 (我们定的)

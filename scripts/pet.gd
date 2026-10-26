@@ -17,6 +17,8 @@ var tz := 0
 
 var hunger := 4               # 饿 (0–4 颗心, 0 = 很饿)
 var happy := 4                # 开心 (0–4 颗心)
+var tidy := 4                 # 干净 (0–4 格, 第六版: 洗澡)
+var next_dirty := 0           # 下一次脏一格
 var discipline := 0           # 管教 (0–4 格 = 0%–100%)
 var weight := 0               # 体重 (克)
 
@@ -85,7 +87,7 @@ const SAVE_KEYS := ["difficulty", "place", "species", "stage", "born_at", "hatch
 	"asleep", "lights", "call", "call_at", "recall_at", "next_tantrum", "mistakes", "mistakes_life",
 	"lifespan", "wants_leave", "leave_ask_at", "end_reason", "ended_at", "sit_since", "sit_used", "sit_day", "hotel_until",
 	"power", "speed", "guard", "rank", "trained_at", "matched_at",
-	"smart", "style", "kind", "job", "classes", "class_at", "work_at", "patted_at", "next_good"]
+	"smart", "style", "kind", "job", "classes", "class_at", "work_at", "patted_at", "next_good", "tidy", "next_dirty"]
 
 
 static func create(t: int, diff: String, tz_offset := 0, rng_seed := 0) -> Pet:
@@ -146,6 +148,7 @@ func _next_due() -> int:
 		c.append(next_hunger)
 		c.append(next_happy)
 		c.append(next_poop)
+		c.append(next_dirty)
 		if stage != "baby":
 			c.append(next_tantrum)
 			c.append(next_good)
@@ -225,6 +228,7 @@ func _become(id: String) -> void:
 	next_hunger = now + drop
 	next_happy = now + int(drop * 1.5)  # 跟饿错开一点
 	next_poop = now + Rules.POOP_EVERY[stage]
+	next_dirty = now + Rules.DIRTY_EVERY[difficulty]
 	if stage != "baby":
 		next_tantrum = now + rng.randi_range(Rules.TANTRUM_GAP[0], Rules.TANTRUM_GAP[1])
 		next_good = now + rng.randi_range(Rules.GOOD_GAP[0], Rules.GOOD_GAP[1])
@@ -287,6 +291,7 @@ func _sleep_or_wake() -> void:
 		next_hunger = now + drop
 		next_happy = now + int(drop * 1.5)  # 跟饿错开一点
 		next_poop = now + Rules.POOP_EVERY[stage]
+		next_dirty = now + Rules.DIRTY_EVERY[difficulty]
 		next_tantrum = maxi(next_tantrum, now + Rules.HOUR)
 		events.append({"kind": "wake"})
 
@@ -308,6 +313,14 @@ func _needs() -> void:
 		if poop_since == 0:
 			poop_since = now
 		next_poop = now + Rules.POOP_EVERY[stage]
+	if next_dirty == 0:
+		next_dirty = now + Rules.DIRTY_EVERY[difficulty]  # 以前版本的存档没有这个
+	if now >= next_dirty:
+		if tidy > 0:
+			tidy -= 1
+		else:
+			happy = maxi(0, happy - 1)  # 脏兮兮的, 不舒服
+		next_dirty = now + Rules.DIRTY_EVERY[difficulty]
 	if stage != "baby" and now >= next_tantrum:
 		if call == "" or call == "good":  # 闹脾气比「做了好事等你夸」要紧
 			call = "discipline"
@@ -510,14 +523,26 @@ func give_medicine() -> String:
 	return "cured"
 
 
+## 打扫: 有便便先清便便 (ok); 没有便便、身上脏了就洗澡 (bath, 睡着了不洗); 都干净就 nothing
 func clean() -> String:
 	if not can_act():
 		return "no"
-	if poop == 0:
+	if poop > 0:
+		poop = 0
+		poop_since = 0
+		return "ok"
+	if tidy >= 4:
 		return "nothing"
-	poop = 0
-	poop_since = 0
-	return "ok"
+	if asleep:
+		return "asleep"
+	tidy = 4
+	next_dirty = now + Rules.DIRTY_EVERY[difficulty]
+	return "bath"
+
+
+## 弄脏一格 (练完、比完、上完班、出门)
+func soil() -> void:
+	tidy = maxi(0, tidy - 1)
 
 
 func scold() -> String:
@@ -585,6 +610,7 @@ func start_sitter() -> String:
 	happy = 4
 	poop = 0
 	poop_since = 0
+	tidy = 4
 	sick = false
 	sick_since = 0
 	medicine_left = 0
@@ -609,6 +635,7 @@ func end_sitter(auto := false) -> String:
 	next_hunger = now + drop
 	next_happy = now + int(drop * 1.5)
 	next_poop = now + Rules.POOP_EVERY[stage]
+	next_dirty = now + Rules.DIRTY_EVERY[difficulty]
 	next_tantrum = maxi(next_tantrum, now + Rules.HOUR)
 	recall_at = now
 	events.append({"kind": "sit_end", "auto": auto})
@@ -640,8 +667,9 @@ func start_hotel(until: int) -> String:
 		return "hungry"  # 旅馆不管饭: 先喂饱、哄开心再去 (On / Meets 也是这样)
 	hotel_until = until
 	call = ""
-	poop = 0  # 旅馆帮忙打扫
+	poop = 0  # 旅馆帮忙打扫, 还给它洗澡
 	poop_since = 0
+	tidy = 4
 	if asleep:
 		lights = false
 	events.append({"kind": "hotel_start"})
@@ -656,6 +684,7 @@ func end_hotel(reason := "pickup") -> String:
 	if reason == "late":
 		happy = maxi(0, happy - 2)
 	next_poop = now + Rules.POOP_EVERY[stage]
+	next_dirty = now + Rules.DIRTY_EVERY[difficulty]
 	next_tantrum = maxi(next_tantrum, now + Rules.HOUR)
 	next_hunger = maxi(next_hunger, now + 60)
 	next_happy = maxi(next_happy, now + 60)
@@ -709,7 +738,7 @@ func can_train() -> String:
 	return "ok"
 
 
-## 练一样本事: 涨 3–5 (管教满了多 1); 练完饿一点、累一点 (饿 -1, 开心 -1, 体重 -1)
+## 练一样本事: 涨 3–5 (管教满了多 1); 练完饿一点、累一点、脏一点 (饿 -1, 开心 -1, 体重 -1, 干净 -1)
 func train(s: String) -> String:
 	var r := can_train()
 	if r != "ok":
@@ -725,6 +754,7 @@ func _tire() -> void:
 	hunger = maxi(0, hunger - 1)
 	happy = maxi(0, happy - 1)
 	weight = maxi(base_weight(), weight - 1)
+	soil()
 	_settle()
 
 

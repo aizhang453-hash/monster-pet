@@ -2,8 +2,9 @@ class_name Helpers
 extends RefCounted
 ## 测试用的小工具: 固定的开始时间、直接做出某个阶段的魔物、一个「很勤快的主人」。
 
-## 2026-01-01 上午 10 点 (测试里时区都是 0, 所以本地时间也是 10 点)
-const T0 := 1767225600 + 10 * 3600
+## 2026-01-06 上午 10 点 (测试里时区都是 0, 所以本地时间也是 10 点)。
+## 第六版有了节日以后, 从元旦挪到 1 月 6 日 (不是节日), 不然每个测试一开始都会收到新年礼物
+const T0 := 1767225600 + 5 * 86400 + 10 * 3600
 
 
 static func pet(diff := Rules.EASY, t := T0, rng_seed := 12345) -> Pet:
@@ -41,6 +42,7 @@ static func care(p: Pet, until: int, step := 5 * 60, do_clean := true, do_medici
 				pass
 		if do_clean:
 			p.clean()
+			p.clean()  # 第六版: 清完便便再洗澡
 		if p.call == "discipline":
 			p.scold()
 		if p.call == "good":

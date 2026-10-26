@@ -16,6 +16,10 @@ const DATA := {
 	"icecream": {"name": "冰淇淋", "kind": "food", "price": 10, "hunger": 0, "happy": 1, "weight": 1},
 	"cake": {"name": "蛋糕", "kind": "food", "price": 15, "hunger": 0, "happy": 2, "weight": 3},
 	"feast": {"name": "大餐", "kind": "food", "price": 20, "hunger": 4, "happy": 0, "weight": 3},
+	# 第六版: 节日的吃的 (只在那个节日的商店卖, 节日礼物也会送)
+	"dumpling": {"name": "饺子", "kind": "food", "price": 12, "hunger": 2, "happy": 1, "weight": 1, "festival": "spring"},
+	"mooncake": {"name": "月饼", "kind": "food", "price": 12, "hunger": 1, "happy": 2, "weight": 2, "festival": "midautumn"},
+	"pumpkin_candy": {"name": "南瓜糖", "kind": "food", "price": 6, "hunger": 0, "happy": 1, "weight": 1, "festival": "halloween"},
 
 	"ball": {"name": "皮球", "kind": "toy", "price": 40},
 	"blocks": {"name": "积木", "kind": "toy", "price": 60},
@@ -40,6 +44,7 @@ const DATA := {
 
 ## 东西的图 (像素图的名字); 墙纸、地毯用颜色块
 const ICON := {"apple": "apple", "icecream": "icecream", "cake": "cake", "feast": "feast", "ball": "game",
+	"dumpling": "dumpling", "mooncake": "mooncake", "pumpkin_candy": "snack",
 	"blocks": "blocks", "pinwheel": "pinwheel", "strawhat": "strawhat", "wizardhat": "wizardhat", "crown": "crown",
 	"bowtie": "bowtie", "scarf": "scarf", "plant": "plant", "bed": "bed", "painting": "painting", "window": "window"}
 
@@ -56,6 +61,24 @@ static func name_of(id: String) -> String:
 
 static func kind_of(id: String) -> String:
 	return DATA[id].kind
+
+
+## 纪念品 (第六版, 学拓麻歌子 V3): 出门偶尔带回来, 过节送一件。名字 + 图 + 在哪里得到
+const SOUVENIRS := {
+	"pebble": {"name": "圆石子", "icon": "pebble", "from": "公园"},
+	"pinecone": {"name": "松果", "icon": "pinecone", "from": "森林"},
+	"shell": {"name": "贝壳", "icon": "shell", "from": "湖边"},
+	"lantern_charm": {"name": "灯笼挂件", "icon": "lantern", "from": "夜市"},
+	"key": {"name": "旅馆钥匙扣", "icon": "key", "from": "旅馆"},
+	"firework": {"name": "烟花徽章", "icon": "firework", "from": "新年"},
+	"fu": {"name": "福字", "icon": "fu", "from": "春节"},
+	"balloon": {"name": "气球", "icon": "balloon", "from": "儿童节"},
+	"moon": {"name": "月亮挂饰", "icon": "moon", "from": "中秋节"},
+	"pumpkin": {"name": "南瓜灯", "icon": "pumpkin", "from": "万圣节"},
+	"snowman": {"name": "小雪人", "icon": "snowman", "from": "圣诞节"},
+}
+## 出门的地方 → 那里的纪念品
+const OUTING_SOUVENIR := {"park": "pebble", "forest": "pinecone", "lakeside": "shell", "night": "lantern_charm", "hotel": "key"}
 
 
 static func of_kinds(kinds: Array) -> Array:
