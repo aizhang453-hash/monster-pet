@@ -5,7 +5,7 @@ extends TestCase
 const T0 := Helpers.T0
 const PETS := 2000
 const ACTIONS := ["meal", "snack", "lights", "game", "medicine", "clean", "scold", "leave_yes", "leave_no", "sit", "unsit",
-	"food", "toy", "hotel", "unhotel", "move", "nothing"]
+	"food", "toy", "hotel", "unhotel", "move", "praise", "pat", "study", "job", "work", "nothing"]
 
 var rng := RandomNumberGenerator.new()
 var endings := {}
@@ -64,6 +64,16 @@ func _do(p: Pet, what: String) -> void:
 			p.end_hotel("pickup")
 		"move":
 			p.place = Species.PLACE_ORDER[rng.randi() % 3]
+		"praise":
+			p.praise()
+		"pat":
+			p.pat()
+		"study":
+			p.study(School.SUBJECTS.keys()[rng.randi() % 3], rng.randi_range(0, 5))
+		"job":
+			p.take_job(School.JOB_ORDER[rng.randi() % School.JOB_ORDER.size()])
+		"work":
+			p.work_done(rng.randf() < 0.5)
 		"medicine":
 			p.give_medicine()
 		"clean":
@@ -91,7 +101,7 @@ func _check(p: Pet, last_now: int) -> void:
 	check(p.medicine_left >= 0 and p.medicine_left <= 2, "%s 药 %d" % [where, p.medicine_left])
 	check(Species.DATA.has(p.species), "%s 种类认识" % where)
 	check(p.stage in ["egg", "baby", "child", "teen", "adult", "dead", "gone"], "%s 阶段 %s" % [where, p.stage])
-	check(p.call in ["", "hunger", "happy", "lights", "discipline"], "%s 叫 %s" % [where, p.call])
+	check(p.call in ["", "hunger", "happy", "lights", "discipline", "good"], "%s 叫 %s" % [where, p.call])
 	check(p.age() >= 0, "%s 岁数" % where)
 	if p.stage != "egg" and not p.is_over():
 		check(p.weight >= p.base_weight(), "%s 体重 %d 不比基本体重轻" % [where, p.weight])
@@ -106,6 +116,9 @@ func _check(p: Pet, last_now: int) -> void:
 		check(not (p.sitting() and p.in_hotel()), "%s 不会又托人又住旅馆" % where)
 	if p.in_hotel():
 		check(p.hunger > 0 and p.happy > 0, "%s 住旅馆饿了就送回家" % where)
+	check(p.smart >= 0 and p.style >= 0 and p.kind >= 0, "%s 聪明时尚善良不是负数" % where)
+	if p.job != "":
+		check(p.stage == "adult" or p.is_over(), "%s 成年才有工作" % where)
 	if p.stage in ["teen", "adult"]:
 		check(Species.place_of(p.species) != "", "%s 少年和成年属于一个地方" % where)
 		check(p.sitter_left() <= Rules.SITTER_PER_DAY, "%s 照看最多 10 小时" % where)

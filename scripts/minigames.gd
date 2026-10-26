@@ -29,8 +29,14 @@ static func info(id: String) -> Dictionary:
 	return {}
 
 
-static func make(id: String, rng_seed := 0) -> MiniGame:
+## id 还可以是 quiz_smart / quiz_style / quiz_kind (第五版: 上课和几份工作的答题); hard = 出难一点的题
+static func make(id: String, rng_seed := 0, hard := false) -> MiniGame:
 	var g: MiniGame
+	if id.begins_with("quiz_"):
+		var q := QuizGame.new()
+		q.kind = id.trim_prefix("quiz_")
+		q.hard = hard
+		g = q
 	match id:
 		"guess":
 			g = GuessGame.new()

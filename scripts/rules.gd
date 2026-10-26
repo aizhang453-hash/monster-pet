@@ -31,6 +31,10 @@ const RECALL_GAP := {STRICT: 60 * MIN, EASY: 2 * HOUR}
 
 ## 闹脾气 (该管教了): 醒着的时候隔多久闹一次, 在这两个数之间随机 (我们定的)。宝宝不闹
 const TANTRUM_GAP := [3 * HOUR, 8 * HOUR]
+## 做好事 (该夸它了, 第五版): 醒着的时候隔多久做一次, 在这两个数之间随机 (我们定的)。宝宝不做; 没夸不算失误
+const GOOD_GAP := [4 * HOUR, 10 * HOUR]
+## 摸摸它 (第五版): 隔多久摸一次才加开心
+const PAT_COOLDOWN := 2 * HOUR
 
 ## 生病
 const POOP_SICK := {STRICT: 3 * HOUR, EASY: 8 * HOUR}     # 便便放多久没清会生病 (我们定的)

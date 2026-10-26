@@ -9,6 +9,7 @@ var done := false
 var score := 0
 var t := 0.0
 var rng := RandomNumberGenerator.new()
+var buttons_version := 0   # 按钮要换的时候加一 (答题: 每道题的选项不一样)
 
 
 func start() -> void:

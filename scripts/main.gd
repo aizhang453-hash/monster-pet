@@ -87,7 +87,8 @@ func _build() -> void:
 	screen.game = game
 	screen.position = LCD_RECT.position
 	screen.size = LCD_RECT.size
-	screen.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	screen.mouse_filter = Control.MOUSE_FILTER_STOP  # 第五版: 能点魔物摸摸它
+	screen.pet_touched.connect(_on_pet_touched)
 	screen.clip_contents = true  # 走出屏幕的魔物不画到外壳上
 	add_child(screen)
 
@@ -163,6 +164,8 @@ func _process(delta: float) -> void:
 		_battle_text = ""
 	if screen.mode == "play" and screen.minigame != null:
 		message.text = screen.minigame.status_text()  # 玩的时候, 下面那行字显示分数
+		if screen.minigame.buttons_version != _play_version:
+			_build_play_row()
 		if screen.minigame.done:
 			finish_play()
 	queue_redraw()
@@ -269,6 +272,8 @@ func _hint() -> String:
 		return "嘘…… 它在睡觉" if not pet.lights else "它睡着了, 记得关灯"
 	if pet.poop > 0:
 		return "有便便, 记得打扫"
+	if game.unread() > 0:
+		return "有新的信, 在「更多」→ 信箱"
 	if pet.stage == "egg":
 		return "蛋在动…… 等它孵出来"
 	return ""
@@ -317,9 +322,9 @@ func do_action(id: String) -> void:
 		"status":
 			screen.show_status()
 		"scold":
-			text = game.act("scold")
-			if game.last_result in ["good", "sad"]:
-				screen.show_effect("angry")
+			# 第五版: 管教里有「骂它」和「夸它」(照 Connection 的管教菜单)
+			_dialog("管教", "它无理取闹的时候骂它; 它做了好事的时候夸它 (这两种时候呼叫灯都会亮)。", [
+				["骂它", _discipline.bind("scold")], ["夸它", _discipline.bind("praise")], ["算了", close_dialog]])
 		"more":
 			_show_menu()
 		"sitter":
@@ -339,6 +344,13 @@ func _ask_out() -> void:
 		return
 	var options := []
 	var lines := []
+	var stage: String = game.pet.stage
+	if stage == "child" or stage == "teen":
+		options.append(["学校", _ask_school])
+		lines.append("学校: 上课练聪明、时尚、善良")
+	elif stage == "adult":
+		options.append(["上班", _ask_work])
+		lines.append("上班: 找工作、上班赚魔晶")
 	for o in Outings.LIST:
 		if o.id in game.outings:
 			options.append([o.name, (_ask_hotel if o.id == "hotel" else go_out.bind(o.id))])
@@ -355,6 +367,87 @@ func go_out(id: String) -> void:
 	if out.get("ok", false):
 		screen.show_outing(id, out.npc, out.item)
 	_after(out.text)
+
+
+# ---------------------------------------------------------------- 第五版: 上学和工作
+
+var play_purpose := "game"   # 现在的小游戏是 game 玩 / school:科目 上课 / work 上班
+var _play_version := 0
+
+
+func _ask_school() -> void:
+	var r := game.pet.can_study()
+	if r != "ok":
+		close_dialog()
+		_say({"tired": "刚下课, 歇一会儿吧 (%s以后)" % Game.sitter_text(maxi(60, game.pet.class_at + School.CLASS_COOLDOWN - game.pet.now)),
+			"asleep": "它在睡觉", "sick": "它生病了"}.get(r, "现在上不了课"))
+		return
+	var options := []
+	for s in School.SUBJECTS:
+		options.append(["%s (%s %d)" % [School.SUBJECTS[s].name, School.SUBJECTS[s].stat, game.pet.ability(s)], _start_class.bind(s)])
+	options.append(["算了", close_dialog])
+	_dialog("上什么课?", "每节课 5 道题, 答对几题就涨几 (管教满了多 1); 答对 4 题以上算很认真, 可以夸它。上完一节歇一小时。", options)
+
+
+func _start_class(subject: String) -> void:
+	play_purpose = "school:" + subject
+	start_play("quiz_" + subject)
+
+
+func _ask_work() -> void:
+	var p := game.pet
+	if p.job == "":
+		_ask_job()
+		return
+	var info: Dictionary = School.JOBS[p.job]
+	_dialog("上班", "现在的工作: %s (赢了给 %d 魔晶, 输了给一半)。上完一次班会累 (饿 -1, 开心 -1), 要歇 4 小时。" % [info.name, info.pay],
+		[["去上班", _start_work], ["换工作", _ask_job], ["算了", close_dialog]])
+
+
+func _ask_job() -> void:
+	var cells := []
+	for id in School.JOB_ORDER:
+		var info: Dictionary = School.JOBS[id]
+		var can := School.can_take(game.pet, id)
+		cells.append(["%s  %d 魔晶\n要: %s" % [info.name, info.pay, School.need_text(id)], null, _take_job.bind(id), can and game.pet.job != id])
+	dialog_buttons = []
+	var grid_box := _button_grid(cells)
+	var extra := dialog_buttons.duplicate()
+	_dialog("找工作", "本事够了才能做 (上学练聪明、时尚、善良, 训练练力气、速度、防御)。", [["算了", close_dialog]], grid_box)
+	dialog_buttons = extra + dialog_buttons
+
+
+func _take_job(id: String) -> void:
+	close_dialog()
+	_after({"ok": "找到工作了: %s! (出门 → 上班)" % School.JOBS[id].name}.get(game.take_job(id), "本事还不够"))
+
+
+func _start_work() -> void:
+	var r := game.pet.can_work()
+	if r != "ok":
+		close_dialog()
+		_say({"tired": "刚下班, 歇一会儿吧 (%s以后)" % Game.sitter_text(maxi(60, game.pet.work_at + School.WORK_COOLDOWN - game.pet.now)),
+			"hungry": "饿着或不开心, 上不了班", "asleep": "它在睡觉", "sick": "它生病了"}.get(r, "现在上不了班"))
+		return
+	play_purpose = "work"
+	start_play(School.JOBS[game.pet.job].game, 0, game.pet.job == "doctor")
+
+
+func _show_mail() -> void:
+	var options := []
+	for i in range(game.letters.size() - 1, -1, -1):
+		var l: Dictionary = game.letters[i]
+		options.append([("● " if not l.read else "") + l.title, _read_letter.bind(i)])
+		if options.size() >= 6:
+			break
+	options.append(["关闭", close_dialog])
+	_dialog("信箱", "还没有信。" if game.letters.is_empty() else "一共 %d 封, 没看的 %d 封 (● 是没看过的)。" % [game.letters.size(), game.unread()], options)
+
+
+func _read_letter(i: int) -> void:
+	game.letters[i].read = true
+	_save()
+	_dialog(game.letters[i].title, game.letters[i].body, [["返回信箱", _show_mail], ["关闭", close_dialog]])
 
 
 func _ask_hotel() -> void:
@@ -397,6 +490,23 @@ func _move(place: String) -> void:
 	close_dialog()
 	var r := game.move(place)
 	_after({"ok": "搬到%s了" % Species.PLACES[place].name, "grown": "搬到%s了 (已经长大了, 只换风景)" % Species.PLACES[place].name}.get(r, ""))
+
+
+func _discipline(what: String) -> void:
+	close_dialog()
+	var text := game.act(what)
+	if game.last_result in ["good", "sad"]:
+		screen.show_effect("angry" if what == "scold" else "note")
+	_after(text)
+
+
+func _on_pet_touched() -> void:
+	if dialog != null or title != null or game.pet == null:
+		return
+	var text := game.act("pat")
+	if game.last_result in ["ok", "again"]:
+		screen.show_effect("status")
+	_after(text)
 
 
 ## 做完一个动作: 存档、刷新, 再显示这个动作的结果 (比动作顺带引起的小事要紧, 比如喂完饭它又说不开心)
@@ -487,20 +597,30 @@ func _ask_play() -> void:
 	_dialog("玩什么?", "\n".join(lines), options)
 
 
-func start_play(id: String, rng_seed := 0) -> void:
+func start_play(id: String, rng_seed := 0, hard := false) -> void:
 	close_dialog()
-	screen.start_play(id, rng_seed)
+	if not id.begins_with("quiz_") and play_purpose.begins_with("school"):
+		play_purpose = "game"
+	screen.start_play(id, rng_seed, hard)
+	_build_play_row()
+	_refresh()
+
+
+## 小游戏下面的按钮 (答题换题的时候重做一次)
+func _build_play_row() -> void:
 	for b in play_row.get_children():
 		play_row.remove_child(b)
 		b.queue_free()
 	var g := screen.minigame
+	_play_version = g.buttons_version
 	var list := g.buttons()
 	var w := (660.0 - 16.0 * (list.size() - 1)) / list.size()
 	for a in list:
 		var b := Button.new()
 		b.text = a[1]
 		b.custom_minimum_size = Vector2(w, 200)
-		b.add_theme_font_size_override("font_size", 40)
+		b.clip_text = true
+		b.add_theme_font_size_override("font_size", 40 if g.id.find("quiz") < 0 else 30)
 		if ScreenView.PLAY_COLORS.has(a[0]):
 			var col: Color = ScreenView.PLAY_COLORS[a[0]]
 			b.add_theme_stylebox_override("normal", Look.box(col, 18, Look.INK, 3))
@@ -512,7 +632,6 @@ func start_play(id: String, rng_seed := 0) -> void:
 		else:
 			b.pressed.connect(play_press.bind(a[0]))
 		play_row.add_child(b)
-	_refresh()
 
 
 func play_press(action: String) -> void:
@@ -531,15 +650,23 @@ func finish_play() -> void:
 	if screen.mode != "play" or g == null:
 		return
 	screen.stop_play()
-	var text := game.act("game", {"won": g.won(), "reward": g.reward()})
+	var text := ""
+	if play_purpose.begins_with("school:"):
+		text = game.act("study", {"subject": play_purpose.trim_prefix("school:"), "correct": g.score})
+	elif play_purpose == "work":
+		text = game.act("work", g.won())
+	else:
+		text = game.act("game", {"won": g.won(), "reward": g.reward()})
+	play_purpose = "game"
 	if game.last_result == "won":
 		screen.show_effect("note")
 	_after(text)
 
 
-## 玩到一半不玩了: 不算输赢, 不给魔晶, 也不减体重
+## 玩到一半不玩了: 不算输赢, 不给魔晶, 也不减体重 (上课、上班也是: 这次不算)
 func quit_play() -> void:
 	screen.stop_play()
+	play_purpose = "game"
 	_after("不玩了")
 
 
@@ -660,7 +787,8 @@ func _answer_leave(let_go: bool) -> void:
 
 
 func _show_menu() -> void:
-	var options := [["商店", _show_shop], ["装扮", _show_dress], ["图鉴", _show_dex], ["怎么玩", _show_help]]
+	var mail := "信箱" + (" (%d 封新信)" % game.unread() if game.unread() > 0 else "")
+	var options := [["商店", _show_shop], ["装扮", _show_dress], ["图鉴", _show_dex], [mail, _show_mail], ["怎么玩", _show_help]]
 	if game.places.size() > 1 and game.pet != null and not game.pet.is_over():
 		options.insert(2, ["搬家", _ask_move])
 	if game.pet != null and game.pet.is_over():
@@ -844,6 +972,8 @@ func _show_help() -> void:
 		"更多: 商店 (用魔晶买东西)、装扮 (帽子、领结、房间布置, 只是好看)、图鉴、搬家\n" +
 		"出门: 小孩起能去公园、森林、湖边、夜市逛 (有的要先解锁), 还能花魔晶住旅馆\n" +
 		"住的地方: 草原、湖泊、天空岛各有一套魔物, 养大一只成年就打开一个新地方\n" +
-		"训练和比赛 (在「玩耍」里): 练力气、速度、防御, 少年起去比赛, 赢了拿奖杯和魔晶; 「状态」按两下看本事\n\n" +
+		"训练和比赛 (在「玩耍」里): 练力气、速度、防御, 少年起去比赛, 赢了拿奖杯和魔晶; 「状态」按两下看本事\n" +
+		"上学和上班 (在「出门」里): 小孩和少年上课练聪明、时尚、善良; 成年找工作、上班赚魔晶\n" +
+		"管教: 无理取闹的时候骂它, 做了好事的时候夸它。用手指点它, 可以摸摸它\n\n" +
 		"它跟着真实的时间长大: 一天长一岁。长大以后它会想出去闯荡, 可以放它走, 也可以留它到老。",
 		[["知道了", close_dialog]])

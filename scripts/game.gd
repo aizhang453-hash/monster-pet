@@ -26,6 +26,8 @@ var outings: Array = Outings.START.duplicate()   # 解锁了的出门地点
 var out_at := {}            # 每个地方上次有收获的时间
 var stats := {}             # 解锁要数的东西: park 去公园几次, apples 吃了几个苹果
 var trophies := {}          # 第四版: 奖杯 (级别 0–4 -> 拿过几个, 跟着主人)
+var letters: Array = []     # 第五版: 收到的信 {title, body, at, read}, 新的在后面
+var pending_letters: Array = []   # 还没寄到的信 {at, title, body} (比如放走的魔物过一天寄回来)
 var rng := RandomNumberGenerator.new()
 
 
@@ -60,6 +62,7 @@ func tick(t := -1) -> void:
 	pet.tz = tz
 	pet.advance(clock() if t < 0 else t)
 	_take_events()
+	_deliver_letters()
 
 
 func _take_events() -> void:
@@ -69,9 +72,14 @@ func _take_events() -> void:
 				dex[e.id] = int(dex.get(e.id, 0)) + 1
 				if Species.DATA[e.id].stage == "adult":
 					_unlock_places()
+					_job_letter()
 			"end":
 				history.append({"species": pet.species, "reason": e.reason, "age": pet.age(),
 					"difficulty": pet.difficulty, "ended_at": pet.ended_at, "rank": pet.rank})
+				if e.reason == "left":
+					# 放走的魔物过一天寄信回来 (第五版「收到信」; 信里的话是 Claude 暂定的, 用户想改随时改)
+					pending_letters.append({"at": pet.ended_at + Rules.DAY, "title": "「%s」寄来的信" % pet.display_name(),
+						"body": "我在外面过得很好, 认识了新朋友, 每天都去新的地方。\n谢谢你把我养大!\n—— %s" % pet.display_name()})
 		var text := describe(e)
 		if text != "":
 			messages.append({"text": text, "rank": RANK.get(e.kind, 1)})
@@ -91,7 +99,8 @@ func describe(e: Dictionary) -> String:
 			return "长大了! 变成了「%s」" % Species.name_of(e.id)
 		"call":
 			return {"hunger": "它饿了! 喂它吃饭吧", "happy": "它不开心, 陪它玩一玩、给点零食",
-				"lights": "它睡着了, 记得关灯", "discipline": "它在无理取闹, 该管教一下了"}[e.what]
+				"lights": "它睡着了, 记得关灯", "discipline": "它在无理取闹, 该管教一下了",
+				"good": "它做了一件好事, 夸夸它吧 (管教 → 夸它)"}[e.what]
 		"mistake":
 			return "没及时照顾它…… (照顾失误 +1)"
 		"poop":
@@ -184,6 +193,31 @@ func act(what: String, arg: Variant = null) -> String:
 			else:
 				text = {"small": "宝宝还太小, 长到小孩再练", "hungry": "饿着或不开心, 不想练", "tired": "刚练过, 歇一会儿吧 (%s以后)" %
 					sitter_text(maxi(60, pet.trained_at + Training.TRAIN_COOLDOWN - pet.now))}.get(r, "")
+		"praise":
+			r = pet.praise()
+			text = {"good": "夸了它, 它很开心 (善良 +2)", "puzzled": "它没做什么, 不明白你为什么夸它"}.get(r, "")
+		"pat":
+			r = pet.pat()
+			text = {"ok": "摸摸它, 它很开心", "again": "它蹭了蹭你的手指"}.get(r, "")
+		"study":
+			# arg = {subject 哪门课, correct 答对几题}
+			r = pet.study(arg.subject, int(arg.correct))
+			if r == "ok":
+				text = "%s答对 %d 题, %s +%d" % [School.SUBJECTS[arg.subject].name, arg.correct, School.SUBJECTS[arg.subject].stat, pet.last_gain]
+				if pet.classes % 5 == 0:
+					_report_letter()
+			else:
+				text = {"small": "宝宝还太小", "grown": "长大了, 该去上班了", "tired": "刚下课, 歇一会儿吧"}.get(r, "")
+		"work":
+			# arg = 赢了没有
+			var pay := pet.work_done(bool(arg))
+			if pay >= 0:
+				money += pay
+				r = "won" if bool(arg) else "lost"
+				text = "下班了! %s得到魔晶 %d" % ["干得不错, " if bool(arg) else "有点手忙脚乱, ", pay]
+			else:
+				r = pet.can_work()
+				text = {"tired": "刚下班, 歇一会儿吧", "hungry": "饿着或不开心, 上不了班", "nojob": "还没有工作"}.get(r, "")
 		"sitter":
 			if pet.in_hotel():
 				r = pet.end_hotel("pickup")
@@ -324,6 +358,51 @@ func go_out(id: String) -> Dictionary:
 	return out
 
 
+# ---------------------------------------------------------------- 第五版: 信
+
+func add_letter(title: String, body: String) -> void:
+	letters.append({"title": title, "body": body, "at": clock(), "read": false})
+	messages.append({"text": "收到一封信: %s (在「更多」→ 信箱)" % title, "rank": 4})
+
+
+func unread() -> int:
+	var n := 0
+	for l in letters:
+		if not l.read:
+			n += 1
+	return n
+
+
+func _deliver_letters() -> void:
+	var now := clock()
+	for l in pending_letters.duplicate():
+		if now >= int(l.at):
+			pending_letters.erase(l)
+			add_letter(l.title, l.body)
+
+
+## 长成成年: 工作介绍所寄来介绍信, 写着现在能做哪些工作
+func _job_letter() -> void:
+	var can := []
+	for id in School.JOB_ORDER:
+		if School.can_take(pet, id):
+			can.append(School.JOBS[id].name)
+	add_letter("工作介绍所的信", "恭喜「%s」长大了! 现在可以找工作了 (出门 → 上班)。\n照它现在的本事, 能做: %s。\n多上课、多训练, 能做的工作会更多。" %
+		[pet.display_name(), "、".join(can)])
+
+
+## 每上 5 节课, 学校寄来成绩单
+func _report_letter() -> void:
+	add_letter("学校寄来的成绩单", "「%s」一共上了 %d 节课。\n聪明 %d、时尚 %d、善良 %d。\n继续加油!" %
+		[pet.display_name(), pet.classes, pet.smart, pet.style, pet.kind])
+
+
+## 找工作: ok / cannot 本事不够 / no
+func take_job(id: String) -> String:
+	tick()
+	return pet.take_job(id)
+
+
 ## 比一场 (第四版): 回 Training.fight 的结果 + foe_species 对手是谁 + prize 给的魔晶 + text 说什么; 不能比就只有 error 和 text
 func compete(level: int) -> Dictionary:
 	tick()
@@ -429,9 +508,10 @@ func take_messages() -> Array:
 # ---------------------------------------------------------------- 存档
 
 func to_dict() -> Dictionary:
-	return {"version": 4, "pet": pet.to_dict() if pet != null else null, "dex": dex, "history": history,
+	return {"version": 5, "pet": pet.to_dict() if pet != null else null, "dex": dex, "history": history,
 		"offset": offset, "difficulty": difficulty, "money": money, "items": items, "owned": owned, "equip": equip,
-		"toy_used": toy_used, "places": places, "outings": outings, "out_at": out_at, "stats": stats, "trophies": trophies}
+		"toy_used": toy_used, "places": places, "outings": outings, "out_at": out_at, "stats": stats, "trophies": trophies,
+		"letters": letters, "pending_letters": pending_letters}
 
 
 static func from_dict(d: Dictionary) -> Game:
@@ -473,6 +553,13 @@ static func from_dict(d: Dictionary) -> Game:
 		g.stats[k] = int(d.stats[k])
 	for k in d.get("trophies", {}):
 		g.trophies[int(k)] = int(d.trophies[k])
+	for l in d.get("letters", []):
+		if l is Dictionary:
+			g.letters.append({"title": str(l.get("title", "")), "body": str(l.get("body", "")), "at": int(l.get("at", 0)),
+				"read": bool(l.get("read", false))})
+	for l in d.get("pending_letters", []):
+		if l is Dictionary:
+			g.pending_letters.append({"at": int(l.get("at", 0)), "title": str(l.get("title", "")), "body": str(l.get("body", ""))})
 	g._unlock_places()  # 以前版本养大过成年的, 直接打开新地方
 	g.messages.clear()
 	return g

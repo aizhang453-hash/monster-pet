@@ -37,7 +37,7 @@ var empty_mark := 0           # 同上, 但生过一次病就从头算 (算生�
 var asleep := false
 var lights := true
 
-var call := ""                # 正在叫你: hunger 饿 / happy 不开心 / lights 睡了没关灯 / discipline 闹脾气
+var call := ""                # 正在叫你: hunger 饿 / happy 不开心 / lights 睡了没关灯 / discipline 闹脾气 / good 做了好事 (该夸了)
 var call_at := 0
 var recall_at := 0            # 失误以后, 这个时候之前不再叫
 var next_tantrum := 0         # 下一次闹脾气
@@ -62,6 +62,17 @@ var trained_at := -Training.TRAIN_COOLDOWN
 var matched_at := -Training.MATCH_COOLDOWN
 var last_gain := 0            # 上一次训练涨了多少 (画面显示)
 
+# 第五版: 上学和工作、夸它、摸摸它 (三样也是长大了留着)
+var smart := 0                # 聪明 (数学课)
+var style := 0                # 时尚 (美术课)
+var kind := 0                 # 善良 (品德课; 夸它也加)
+var job := ""                 # 做什么工作 (School.JOBS 的代号, 空 = 还没找)
+var classes := 0              # 一共上了几节课
+var class_at := -School.CLASS_COOLDOWN
+var work_at := -School.WORK_COOLDOWN
+var patted_at := -Rules.PAT_COOLDOWN
+var next_good := 0            # 下一次做好事 (该夸它了)
+
 var end_reason := ""          # neglect 没人照顾 / sick 病死 / old 老死 / left 离开了
 var ended_at := 0
 
@@ -73,7 +84,8 @@ const SAVE_KEYS := ["difficulty", "place", "species", "stage", "born_at", "hatch
 	"sick", "sick_since", "medicine_left", "sick_times", "old_sick_age", "empty_since", "empty_mark",
 	"asleep", "lights", "call", "call_at", "recall_at", "next_tantrum", "mistakes", "mistakes_life",
 	"lifespan", "wants_leave", "leave_ask_at", "end_reason", "ended_at", "sit_since", "sit_used", "sit_day", "hotel_until",
-	"power", "speed", "guard", "rank", "trained_at", "matched_at"]
+	"power", "speed", "guard", "rank", "trained_at", "matched_at",
+	"smart", "style", "kind", "job", "classes", "class_at", "work_at", "patted_at", "next_good"]
 
 
 static func create(t: int, diff: String, tz_offset := 0, rng_seed := 0) -> Pet:
@@ -136,6 +148,7 @@ func _next_due() -> int:
 		c.append(next_poop)
 		if stage != "baby":
 			c.append(next_tantrum)
+			c.append(next_good)
 	if _has_sleep():
 		c.append(_next_sleep_change())
 	if call != "":
@@ -214,6 +227,7 @@ func _become(id: String) -> void:
 	next_poop = now + Rules.POOP_EVERY[stage]
 	if stage != "baby":
 		next_tantrum = now + rng.randi_range(Rules.TANTRUM_GAP[0], Rules.TANTRUM_GAP[1])
+		next_good = now + rng.randi_range(Rules.GOOD_GAP[0], Rules.GOOD_GAP[1])
 	if stage == "adult":
 		var life: int = Species.DATA[id].life + rng.randi_range(Rules.LIFESPAN_RANDOM[0], Rules.LIFESPAN_RANDOM[1])
 		lifespan = maxi(Rules.LIFESPAN_MIN, life)
@@ -295,11 +309,19 @@ func _needs() -> void:
 			poop_since = now
 		next_poop = now + Rules.POOP_EVERY[stage]
 	if stage != "baby" and now >= next_tantrum:
-		if call == "":
+		if call == "" or call == "good":  # 闹脾气比「做了好事等你夸」要紧
 			call = "discipline"
 			call_at = now
 			events.append({"kind": "call", "what": "discipline"})
 		next_tantrum = now + rng.randi_range(Rules.TANTRUM_GAP[0], Rules.TANTRUM_GAP[1])
+	if stage != "baby" and next_good == 0:
+		next_good = now + rng.randi_range(Rules.GOOD_GAP[0], Rules.GOOD_GAP[1])  # 以前版本的存档没有这个
+	if stage != "baby" and now >= next_good:
+		if call == "":
+			call = "good"  # 做了一件好事 (第五版: 该夸它了)
+			call_at = now
+			events.append({"kind": "call", "what": "good"})
+		next_good = now + rng.randi_range(Rules.GOOD_GAP[0], Rules.GOOD_GAP[1])
 
 
 ## 心空没空、叫你的事办好没有、要不要叫你 (做完动作也要跑一次)
@@ -317,7 +339,7 @@ func _settle() -> void:
 		call = ""
 	elif call == "lights" and (not asleep or not lights):
 		call = ""
-	if not asleep and stage != "egg" and not is_over() and (call == "" or call == "discipline") and now >= recall_at:
+	if not asleep and stage != "egg" and not is_over() and (call == "" or call == "discipline" or call == "good") and now >= recall_at:
 		var want := "hunger" if hunger == 0 else ("happy" if happy == 0 else "")
 		if want != "":
 			call = want
@@ -328,7 +350,7 @@ func _settle() -> void:
 func _expire_call() -> void:
 	if call == "" or now < call_at + Rules.CALL_WINDOW[difficulty]:
 		return
-	if call != "discipline":  # 闹脾气没管, 不算失误 (只是管教没涨)
+	if call != "discipline" and call != "good":  # 闹脾气没管、做好事没夸, 不算失误
 		mistakes += 1
 		mistakes_life += 1
 		recall_at = now + Rules.RECALL_GAP[difficulty]
@@ -739,6 +761,115 @@ func compete(level: int) -> Dictionary:
 	_tire()
 	matched_at = now
 	return res
+
+
+# ---------------------------------------------------------------- 上学、工作、夸它、摸摸它 (第五版)
+
+## 本事: 聪明 时尚 善良 (上学练的) 或者 力气 速度 防御 (训练练的, 带天生的)
+func ability(s: String) -> int:
+	if s in ["smart", "style", "kind"]:
+		return int(get(s))
+	return stat(s)
+
+
+## 能不能上学: 小孩和少年才上学 (照 V4)
+func can_study() -> String:
+	if not can_act():
+		return "no"
+	if stage == "baby":
+		return "small"
+	if stage == "adult":
+		return "grown"
+	if asleep:
+		return "asleep"
+	if sick:
+		return "sick"
+	if now - class_at < School.CLASS_COOLDOWN:
+		return "tired"
+	return "ok"
+
+
+## 上完一节课: 答对几题就涨几 (管教满了多 1); 很认真的话它做了好事, 可以夸它
+func study(subject: String, correct: int) -> String:
+	var r := can_study()
+	if r != "ok":
+		return r
+	last_gain = correct + (Training.DISCIPLINE_BONUS if discipline >= 4 and correct > 0 else 0)
+	set(subject, mini(Training.MAX_STAT, int(get(subject)) + last_gain))
+	classes += 1
+	class_at = now
+	if correct >= School.GOOD_CLASS and call == "":
+		call = "good"
+		call_at = now
+		events.append({"kind": "call", "what": "good"})
+	return "ok"
+
+
+func take_job(id: String) -> String:
+	if stage != "adult" or is_over():
+		return "no"
+	if not School.can_take(self, id):
+		return "cannot"
+	job = id
+	return "ok"
+
+
+## 能不能上班: 成年、有工作、歇够了, 还有不饿不累
+func can_work() -> String:
+	if not can_act():
+		return "no"
+	if stage != "adult":
+		return "small"
+	if job == "":
+		return "nojob"
+	if asleep:
+		return "asleep"
+	if sick:
+		return "sick"
+	if hunger == 0 or happy == 0:
+		return "hungry"
+	if now - work_at < School.WORK_COOLDOWN:
+		return "tired"
+	return "ok"
+
+
+## 上完一次班 (小游戏玩完了): 回给多少魔晶 (赢了全给, 输了一半; -1 = 上不了班)
+func work_done(won: bool) -> int:
+	if can_work() != "ok":
+		return -1
+	var pay: int = School.JOBS[job].pay
+	work_at = now
+	_tire()
+	return pay if won else int(pay / 2.0)
+
+
+## 夸它: 它做了好事 (呼叫灯亮着) 的时候夸, 开心 +1、善良 +2; 别的时候夸, 它不明白 (学天使和《怪物农场》)
+func praise() -> String:
+	if not can_act():
+		return "no"
+	if asleep:
+		return "asleep"
+	if call != "good":
+		return "puzzled"
+	call = ""
+	happy = mini(4, happy + 1)
+	kind = mini(Training.MAX_STAT, kind + 2)
+	_settle()
+	return "good"
+
+
+## 摸摸它 (学 Smart 手表的触摸屏): 隔两小时摸一次开心 +1, 摸得太勤它只是蹭蹭你
+func pat() -> String:
+	if not can_act():
+		return "no"
+	if asleep:
+		return "asleep"
+	if now - patted_at < Rules.PAT_COOLDOWN:
+		return "again"
+	patted_at = now
+	happy = mini(4, happy + 1)
+	_settle()
+	return "ok"
 
 
 # ---------------------------------------------------------------- 存档

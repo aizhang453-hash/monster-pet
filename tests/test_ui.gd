@@ -103,7 +103,9 @@ func test_status_and_lights_and_clean() -> void:
 	main.do_action("status")
 	eq(main.screen.status_page, 2, "再按一次看第二页 (本事)")
 	main.do_action("status")
-	eq(main.screen.mode, "pet", "按第三次回去")
+	eq(main.screen.status_page, 3, "第三页 (聪明时尚善良、工作)")
+	main.do_action("status")
+	eq(main.screen.mode, "pet", "按第四次回去")
 	main.do_action("lights")
 	check(not main.game.pet.lights, "关灯了")
 	main.do_action("lights")
@@ -295,9 +297,10 @@ func test_going_out_to_the_park() -> void:
 	_feed_up()
 	main.do_action("out")
 	check(main.dialog != null, "问去哪儿")
-	eq(main.dialog_buttons[0].text, "公园")
-	eq(main.dialog_buttons[1].text, "旅馆")
-	main.choose(0)
+	eq(main.dialog_buttons[0].text, "学校", "小孩先是学校")
+	eq(main.dialog_buttons[1].text, "公园")
+	eq(main.dialog_buttons[2].text, "旅馆")
+	main.choose(1)
 	eq(main.screen.mode, "out", "屏幕上看它在公园逛")
 	check(Species.DATA.has(main.screen.out_npc), "碰到了一只魔物")
 	has_text(main.message.text, "公园")
@@ -311,7 +314,7 @@ func test_hotel_from_the_out_menu() -> void:
 	_feed_up()
 	main.game.money = 100
 	main.do_action("out")
-	main.choose(1)  # 旅馆
+	main.choose(2)  # 旅馆 (前面是学校、公园)
 	has_text(main.dialog.get_child(0).get_child(0).get_child(1).text, "不管饭")
 	main.choose(0)  # 住 2 小时
 	check(main.game.pet.in_hotel())
@@ -386,6 +389,103 @@ func test_tournament_plays_a_battle() -> void:
 	eq(main.screen.mode, "pet", "打完回去")
 	has_text(main.message.text, "新手赛", "打完说结果")
 	eq(main.game.pet.rank, 1)
+
+
+func test_going_to_class() -> void:
+	_start()
+	_later(6 * 60 + 3600)
+	_feed_up()
+	main.do_action("out")
+	main.choose(0)  # 学校
+	has_text(main.dialog.get_child(0).get_child(0).get_child(0).text, "上什么课")
+	main.choose(0)  # 数学课
+	eq(main.screen.mode, "play")
+	eq(main.play_purpose, "school:smart")
+	var q: QuizGame = main.screen.minigame
+	eq(main.play_row.get_child_count(), 3, "三个选项三个按钮")
+	for i in 5:
+		var right: int = q.question().answer
+		eq(main.play_row.get_child(right).text, q.question().options[right], "按钮上是选项")
+		main.play_press(str(right))
+		q.step(1.0)
+		main._process(0.0)
+		if main.screen.mode != "play":
+			break
+	eq(main.screen.mode, "pet", "五题答完下课")
+	eq(main.game.pet.smart, 5, "全答对, 聪明 +5")
+	has_text(main.message.text, "数学课")
+	eq(main.game.pet.call, "good", "很认真, 该夸了")
+	main.do_action("scold")
+	main.choose(1)  # 夸它
+	eq(main.game.pet.kind, 2, "夸了它, 善良 +2")
+
+
+func test_finding_a_job_and_working() -> void:
+	_start()
+	_later(6 * 60)
+	var p: Pet = main.game.pet
+	p.hatched_at = p.now
+	p._become("huolong")
+	_feed_up()
+	main.game._take_events()
+	main.do_action("out")
+	eq(main.dialog_buttons[0].text, "上班", "成年先是上班")
+	main.choose(0)
+	has_text(main.dialog.get_child(0).get_child(0).get_child(0).text, "找工作", "还没工作先找工作")
+	check(not main.dialog_buttons[0].disabled, "杂工谁都能做")
+	check(main.dialog_buttons[6].disabled, "医生本事不够")
+	main.choose(0)
+	eq(p.job, "helper")
+	main.do_action("out")
+	main.choose(0)
+	main.choose(0)  # 去上班
+	eq(main.play_purpose, "work")
+	eq(main.screen.minigame.id, "guess", "杂工上班玩猜左右")
+	var m: int = main.game.money
+	var g: GuessGame = main.screen.minigame
+	for i in 5:
+		g.turn = 0
+		main.play_press("left")
+	g.step(1.0)
+	main._process(0.0)
+	eq(main.screen.mode, "pet")
+	check(main.game.money == m + 15 or main.game.money == m + 7, "上班赚了魔晶 (%d)" % (main.game.money - m))
+	has_text(main.message.text, "下班")
+
+
+func test_petting_by_touching() -> void:
+	_start()
+	_later(6 * 60)
+	main.game.pet.happy = 1
+	main.screen.pet_x = 16
+	var e := InputEventMouseButton.new()
+	e.button_index = MOUSE_BUTTON_LEFT
+	e.pressed = true
+	e.position = Vector2(24, 22) * main.screen.px()
+	main.screen._gui_input(e)
+	eq(main.game.pet.happy, 2, "点它一下, 摸摸它, 开心 +1")
+	main.screen._gui_input(e)
+	eq(main.game.pet.happy, 2, "摸得太勤, 只是蹭蹭")
+	e.position = Vector2(2, 2) * main.screen.px()
+	main.game.pet.patted_at = -999999
+	main.screen._gui_input(e)
+	eq(main.game.pet.happy, 2, "点到旁边不算")
+
+
+func test_mailbox() -> void:
+	_start()
+	_later(6 * 60)
+	main.game.add_letter("测试的信", "信里的话")
+	main._refresh()
+	main.do_action("more")
+	var texts := []
+	for b in main.dialog_buttons:
+		texts.append(b.text)
+	check(texts.any(func(s): return s.begins_with("信箱 (1 封新信)")), "更多里有信箱, 写着新信: %s" % [texts])
+	main.choose(texts.find("信箱 (1 封新信)"))
+	main.choose(0)
+	has_text(main.dialog.get_child(0).get_child(0).get_child(1).text, "信里的话")
+	eq(main.game.unread(), 0, "看过了")
 
 
 func test_buttons_off_after_the_end() -> void:

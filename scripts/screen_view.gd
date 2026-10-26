@@ -6,6 +6,8 @@ extends Control
 
 const W := 48
 const H := 32
+signal pet_touched   # 第五版: 手指 (鼠标) 点到了魔物 (摸摸它)
+
 const PLAY_COLORS := {"red": Color("e8483a"), "yellow": Color("ffd84a"), "blue": Color("2f6fd0"), "green": Color("7cd36b")}
 
 var game: Game
@@ -73,15 +75,27 @@ func _walk(delta: float) -> void:
 		facing = -facing
 
 
+## 点到魔物身上 = 摸摸它
+func _gui_input(event: InputEvent) -> void:
+	var pressed: bool = (event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT) \
+		or (event is InputEventScreenTouch and event.pressed)
+	if not pressed or mode != "pet" or game == null or game.pet == null:
+		return
+	var at: Vector2 = event.position / px()
+	if Rect2(pet_x, 12, 16, 19).has_point(at):
+		pet_touched.emit()
+		accept_event()
+
+
 func show_effect(name: String) -> void:
 	effect = name
 	effect_until = t + 1.6
 
 
-## 按「状态」: 第一页 (饿、开心、管教、岁数体重) → 第二页 (本事和比赛级别) → 回去
+## 按「状态」: 第一页 (饿、开心、管教、岁数体重) → 第二页 (本事和比赛级别) → 第三页 (聪明时尚善良和工作) → 回去
 func show_status() -> void:
-	if mode == "status" and status_page == 1:
-		status_page = 2
+	if mode == "status" and status_page < 3:
+		status_page += 1
 	elif mode == "status":
 		mode = "pet"
 		return
@@ -111,8 +125,8 @@ func show_outing(id: String, npc: String, item: String) -> void:
 	mode = "out"
 
 
-func start_play(id: String, rng_seed := 0) -> void:
-	minigame = MiniGames.make(id, rng_seed)
+func start_play(id: String, rng_seed := 0, hard := false) -> void:
+	minigame = MiniGames.make(id, rng_seed, hard)
 	mode = "play"
 
 
@@ -254,6 +268,9 @@ func _draw_status(p: float, pet: Pet) -> void:
 	if status_page == 2:
 		_draw_status_2(p, pet)
 		return
+	if status_page == 3:
+		_draw_status_3(p, pet)
+		return
 	var lines := [["饿", pet.hunger], ["开心", pet.happy]]
 	for i in lines.size():
 		var y := 2 + i * 8
@@ -293,6 +310,16 @@ func _draw_status_2(p: float, pet: Pet) -> void:
 	var level := "还没赢过" if pet.rank == 0 else "赢过%s赛" % Training.RANK_NAMES[pet.rank - 1]
 	Art.draw(self, "trophy", Vector2(2, 24) * p, p)
 	_text(Vector2(12, 31), level, p, Look.INK, 3.6)
+
+
+## 状态第三页 (第五版): 上学练的三样本事和工作
+func _draw_status_3(p: float, pet: Pet) -> void:
+	var i := 0
+	for s in School.SUBJECTS:
+		_text(Vector2(3, 7 + i * 7.5), "%s %d" % [School.SUBJECTS[s].stat, pet.ability(s)], p, Look.INK, 3.8)
+		i += 1
+	var work: String = "还没有工作" if pet.job == "" else "工作: " + School.JOBS[pet.job].name
+	_text(Vector2(3, 30), work, p, Look.INK, 3.6)
 
 
 ## 比赛: 我在左边, 对手在右边, 上面两条血, 打一下往前冲一下
@@ -355,6 +382,18 @@ func _draw_play(p: float, pet: Pet) -> void:
 			for r in j.rocks:
 				Art.draw(self, "rock", Vector2(r.x, 24) * p, p)
 			_draw_monster(p, pet.species, Vector2(JumpGame.PET_X, 14 - j.height()), false, Color.WHITE)
+		"quiz_smart", "quiz_style", "quiz_kind":
+			var qz := g as QuizGame
+			var q := qz.question()
+			var y := 9.0
+			if q.icon != "":
+				var s := Art.size_of(q.icon)
+				Art.draw(self, q.icon, Vector2(24 - s.x, 2) * p, p * 2)
+				y = 23.0
+			_text(Vector2(2, y), q.text, p, Look.INK, 4.0 if q.icon != "" else 4.4)
+			if qz.picked >= 0:
+				var line: String = "答对了!" if qz.right else "答错了, 是「%s」" % q.options[q.answer]
+				_text(Vector2(2, y + 7), line, p, Look.CALL if not qz.right else Look.INK, 3.6)
 		"memory":
 			var m := g as MemoryGame
 			for i in MemoryGame.COLORS.size():

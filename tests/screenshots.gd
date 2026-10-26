@@ -249,6 +249,49 @@ func _run() -> void:
 	for i in 80:
 		main.screen._process(0.3)
 	await _shot("41_比完")
+	# 第五版: 上学、工作、夸它、摸摸它、信
+	q.hunger = 4
+	q.happy = 4
+	q.call = ""
+	main._refresh()
+	main.do_action("scold")
+	await _shot("43_管教_骂还是夸")
+	main.close_dialog()
+	q.patted_at = -999999
+	main.screen.pet_x = 16
+	main._on_pet_touched()
+	await _shot("44_摸摸它")
+	q.smart = 22
+	q.style = 41
+	q.kind = 18
+	main.screen.mode = "status"
+	main.screen.status_page = 3
+	main.screen.status_until = main.screen.t + 99
+	await _shot("45_状态第三页")
+	main.screen.mode = "pet"
+	main._ask_job()
+	await _shot("46_找工作")
+	main.close_dialog()
+	main.play_purpose = "school:style"
+	main.start_play("quiz_style", 4)
+	await _shot("47_美术课")
+	main.play_press("0")
+	await _shot("48_答了一题")
+	main.quit_play()
+	main.play_purpose = "school:kind"
+	main.start_play("quiz_kind", 6)
+	await _shot("49_品德课")
+	main.quit_play()
+	main.play_purpose = "school:smart"
+	main.start_play("quiz_smart", 2)
+	await _shot("50_数学课")
+	main.quit_play()
+	main.game.add_letter("学校寄来的成绩单", "「火焰龙」一共上了 5 节课。\n聪明 22、时尚 41、善良 18。\n继续加油!")
+	main._show_mail()
+	await _shot("51_信箱")
+	main._read_letter(main.game.letters.size() - 1)
+	await _shot("52_看信")
+	main.close_dialog()
 	# 开始界面: 养着魔物的时候
 	var again = load("res://scenes/main.tscn").instantiate()
 	main.game.offset = main.game.clock() - int(Time.get_unix_time_from_system())  # 再打开的那个看真的钟, 拨到一样的时间

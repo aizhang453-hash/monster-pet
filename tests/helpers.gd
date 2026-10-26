@@ -43,5 +43,7 @@ static func care(p: Pet, until: int, step := 5 * 60, do_clean := true, do_medici
 			p.clean()
 		if p.call == "discipline":
 			p.scold()
+		if p.call == "good":
+			p.praise()
 		if p.wants_leave:
 			p.answer_leave(false)
