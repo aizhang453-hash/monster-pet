@@ -26,7 +26,9 @@ func after_each() -> void:
 
 
 func _start(diff_button := 0) -> void:
-	check(main.dialog != null, "第一次打开先选难度")
+	check(main.title != null, "打开先是开始界面")
+	main.start_game()
+	check(main.dialog != null, "第一次玩, 按了开始先选难度")
 	main.choose(diff_button)
 	main.game.pet.tz = 0
 
@@ -35,6 +37,33 @@ func _later(seconds: int) -> void:
 	main.game.offset += seconds
 	main.game.tick()
 	main._refresh()
+
+
+func test_title_screen() -> void:
+	check(main.title != null, "打开游戏先看到开始界面")
+	eq(main.title.start_button.text, "开始", "还没养过: 「开始」")
+	main.do_action("feed")
+	check(main.dialog == null, "开始界面盖着, 后面的按钮按不到")
+	main.title.help_button.pressed.emit()
+	check(main.dialog != null, "开始界面能看「怎么玩」")
+	main.close_dialog()
+	main.title.start_button.pressed.emit()
+	check(main.title == null, "按了开始, 开始界面没了")
+	check(main.dialog != null, "接着选难度")
+
+
+func test_title_says_continue_when_raising_one() -> void:
+	main.game.fixed_time = -1  # 这一条用真的钟: 再打开的那一个读存档时也是看真的钟
+	_start()
+	_later(6 * 60)
+	main.game.save()
+	var again = load("res://scenes/main.tscn").instantiate()
+	(Engine.get_main_loop() as SceneTree).root.add_child(again)
+	has_text(again.title.start_button.text, "继续养「小团子」", "再打开: 继续养")
+	again.start_game()
+	check(again.dialog == null, "继续养不用再选难度")
+	eq(again.game.pet.species, "tuanzi")
+	again.free()
 
 
 func test_first_open_asks_difficulty_and_lays_an_egg() -> void:
@@ -70,8 +99,11 @@ func test_status_and_lights_and_clean() -> void:
 	_later(6 * 60)
 	main.do_action("status")
 	eq(main.screen.mode, "status")
+	eq(main.screen.status_page, 1)
 	main.do_action("status")
-	eq(main.screen.mode, "pet", "再按一次回去")
+	eq(main.screen.status_page, 2, "再按一次看第二页 (本事)")
+	main.do_action("status")
+	eq(main.screen.mode, "pet", "按第三次回去")
 	main.do_action("lights")
 	check(not main.game.pet.lights, "关灯了")
 	main.do_action("lights")
@@ -178,6 +210,7 @@ func test_sitter_button() -> void:
 
 
 func test_difficulty_text_explains_the_fifteen_minutes() -> void:
+	main.start_game()
 	check(main.dialog_buttons[0].text.contains("推荐"), "放宽标了推荐")
 	check(main.dialog_buttons[1].text.contains("原版严格"))
 
@@ -234,7 +267,7 @@ func test_child_has_two_games() -> void:
 	_later(6 * 60 + 3600)
 	eq(main.game.pet.stage, "child")
 	main.do_action("play")
-	eq(main.dialog_buttons.size(), 3, "小孩: 猜左右、接果子, 加「算了」")
+	eq(main.dialog_buttons.size(), 4, "小孩: 猜左右、接果子、训练, 加「算了」")
 	main.choose(1)
 	eq(main.screen.minigame.id, "catch")
 	check(main.screen.minigame.hold_buttons())
@@ -311,6 +344,48 @@ func test_choose_where_to_raise_the_next_egg() -> void:
 	for b in main.dialog_buttons:
 		texts.append(b.text)
 	check("搬家" in texts, "更多里有搬家")
+
+
+func test_training_from_the_play_menu() -> void:
+	_start()
+	_later(6 * 60 + 3600)
+	_feed_up()
+	main.do_action("play")
+	main.choose(2)  # 训练
+	has_text(main.dialog.get_child(0).get_child(0).get_child(0).text, "练什么")
+	main.choose(0)  # 举重
+	check(main.game.pet.power >= 3, "力气涨了")
+	has_text(main.message.text, "力气 +")
+	eq(main.screen.effect, "dumbbell")
+
+
+func test_tournament_plays_a_battle() -> void:
+	_start()
+	_later(6 * 60)
+	var p: Pet = main.game.pet
+	p.hatched_at = p.now
+	p._become("huolong")
+	p.power = 80
+	p.speed = 80
+	p.guard = 80
+	_feed_up()
+	main.game._take_events()
+	main.do_action("play")
+	var texts := []
+	for b in main.dialog_buttons:
+		texts.append(b.text)
+	var at := texts.find("比赛")
+	check(at >= 0, "成年的玩耍里有比赛: %s" % [texts])
+	main.choose(at)
+	main.choose(0)  # 新手赛
+	eq(main.screen.mode, "battle", "屏幕上开始对打")
+	has_text(main.message.text, "开始")
+	for i in 60:
+		main.screen._process(0.5)
+		main._process(0.0)
+	eq(main.screen.mode, "pet", "打完回去")
+	has_text(main.message.text, "新手赛", "打完说结果")
+	eq(main.game.pet.rank, 1)
 
 
 func test_buttons_off_after_the_end() -> void:

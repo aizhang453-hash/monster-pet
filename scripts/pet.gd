@@ -53,6 +53,15 @@ var sit_used := 0             # sit_day 那天已经托了多少秒
 var sit_day := -1             # 本地日期 (从 1970 年算第几天)
 var hotel_until := 0          # 住旅馆约好什么时候来接 (0 = 没住旅馆; 第三版)
 
+# 第四版: 训练和比赛 (本事长大了也留着)
+var power := 0                # 练出来的力气 (不算天生的)
+var speed := 0
+var guard := 0
+var rank := 0                 # 比赛赢到第几级了 (0 = 还没赢过, 5 = 冠军)
+var trained_at := -Training.TRAIN_COOLDOWN
+var matched_at := -Training.MATCH_COOLDOWN
+var last_gain := 0            # 上一次训练涨了多少 (画面显示)
+
 var end_reason := ""          # neglect 没人照顾 / sick 病死 / old 老死 / left 离开了
 var ended_at := 0
 
@@ -63,7 +72,8 @@ const SAVE_KEYS := ["difficulty", "place", "species", "stage", "born_at", "hatch
 	"hunger", "happy", "discipline", "weight", "poop", "poop_since", "next_poop", "next_hunger", "next_happy",
 	"sick", "sick_since", "medicine_left", "sick_times", "old_sick_age", "empty_since", "empty_mark",
 	"asleep", "lights", "call", "call_at", "recall_at", "next_tantrum", "mistakes", "mistakes_life",
-	"lifespan", "wants_leave", "leave_ask_at", "end_reason", "ended_at", "sit_since", "sit_used", "sit_day", "hotel_until"]
+	"lifespan", "wants_leave", "leave_ask_at", "end_reason", "ended_at", "sit_since", "sit_used", "sit_day", "hotel_until",
+	"power", "speed", "guard", "rank", "trained_at", "matched_at"]
 
 
 static func create(t: int, diff: String, tz_offset := 0, rng_seed := 0) -> Pet:
@@ -647,6 +657,88 @@ func _hotel_update() -> void:
 		end_hotel("hungry")
 	elif now >= hotel_until:
 		end_hotel("late")
+
+
+# ---------------------------------------------------------------- 训练和比赛 (第四版)
+
+## 本事 = 练出来的 + 天生的 (成年后看种类)
+func stat(s: String) -> int:
+	return int(get(s)) + Training.bonus(species, s)
+
+
+func stats() -> Dictionary:
+	return {"power": stat("power"), "speed": stat("speed"), "guard": stat("guard")}
+
+
+## 能不能训练: ok / no / small 太小 (宝宝) / asleep / sick / hungry 饿着或不开心 / tired 刚练过
+func can_train() -> String:
+	if not can_act():
+		return "no"
+	if stage == "baby":
+		return "small"
+	if asleep:
+		return "asleep"
+	if sick:
+		return "sick"
+	if hunger == 0 or happy == 0:
+		return "hungry"
+	if now - trained_at < Training.TRAIN_COOLDOWN:
+		return "tired"
+	return "ok"
+
+
+## 练一样本事: 涨 3–5 (管教满了多 1); 练完饿一点、累一点 (饿 -1, 开心 -1, 体重 -1)
+func train(s: String) -> String:
+	var r := can_train()
+	if r != "ok":
+		return r
+	last_gain = rng.randi_range(Training.GAIN[0], Training.GAIN[1]) + (Training.DISCIPLINE_BONUS if discipline >= 4 else 0)
+	set(s, mini(Training.MAX_STAT, int(get(s)) + last_gain))
+	_tire()
+	trained_at = now
+	return "ok"
+
+
+func _tire() -> void:
+	hunger = maxi(0, hunger - 1)
+	happy = maxi(0, happy - 1)
+	weight = maxi(base_weight(), weight - 1)
+	_settle()
+
+
+## 能不能比赛 (match 是 GDScript 的关键字, 所以叫 compete): 跟训练一样, 再加上 少年起才能比 (small)、刚比过 (tired)
+func can_match() -> String:
+	if not can_act():
+		return "no"
+	if stage == "baby" or stage == "child":
+		return "small"
+	if asleep:
+		return "asleep"
+	if sick:
+		return "sick"
+	if hunger == 0 or happy == 0:
+		return "hungry"
+	if now - matched_at < Training.MATCH_COOLDOWN:
+		return "tired"
+	return "ok"
+
+
+## 比一场: level = 第几级 (只能比赢过的和下一级)。回 Training.fight 的结果, 再加 rank_up (这场赢了升级没有)
+func compete(level: int) -> Dictionary:
+	var r := can_match()
+	if r != "ok":
+		return {"error": r}
+	if level > rank or level >= Training.RANKS.size():
+		return {"error": "locked"}
+	var foe := Training.make_foe(level, rng)
+	var res := Training.fight(stats(), foe, rng)
+	res.foe = foe
+	res.rank_up = res.won and level == rank
+	if res.rank_up:
+		rank += 1
+	_tire()
+	matched_at = now
+	return res
 
 
 # ---------------------------------------------------------------- 存档

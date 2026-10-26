@@ -17,6 +17,12 @@ var effect := ""             # 刚做完动作, 旁边冒一个小图标 (meal s
 var effect_until := 0.0
 var status_until := 0.0
 var minigame: MiniGame = null
+# 第四版: 比赛的画面 (一下一下放出来) 和第二页状态
+var battle: Dictionary = {}
+var battle_step := 0
+var battle_next := 0.0
+var battle_done_at := 0.0
+var status_page := 1
 # 第三版: 出门的画面 (几秒钟)
 var out_id := ""
 var out_npc := ""
@@ -36,6 +42,14 @@ func _process(delta: float) -> void:
 		mode = "pet"
 	if mode == "out" and t > out_until:
 		mode = "pet"
+	if mode == "battle":
+		if battle_step < battle.log.size() and t >= battle_next:
+			battle_step += 1
+			battle_next = t + 0.7
+			if battle_step >= battle.log.size():
+				battle_done_at = t + 1.8
+		elif battle_step >= battle.log.size() and t >= battle_done_at:
+			mode = "pet"
 	if mode == "play" and minigame != null:
 		minigame.step(delta)
 	_walk(delta)
@@ -64,9 +78,29 @@ func show_effect(name: String) -> void:
 	effect_until = t + 1.6
 
 
+## 按「状态」: 第一页 (饿、开心、管教、岁数体重) → 第二页 (本事和比赛级别) → 回去
 func show_status() -> void:
-	mode = "pet" if mode == "status" else "status"
+	if mode == "status" and status_page == 1:
+		status_page = 2
+	elif mode == "status":
+		mode = "pet"
+		return
+	else:
+		mode = "status"
+		status_page = 1
 	status_until = t + 6.0
+
+
+func show_battle(res: Dictionary) -> void:
+	battle = res
+	battle_step = 0
+	battle_next = t + 0.8
+	battle_done_at = t + 999.0
+	mode = "battle"
+
+
+func battle_over() -> bool:
+	return mode != "battle"
 
 
 func show_outing(id: String, npc: String, item: String) -> void:
@@ -110,6 +144,8 @@ func _draw() -> void:
 			_draw_play(p, pet)
 		"out":
 			_draw_out(p, pet)
+		"battle":
+			_draw_battle(p, pet)
 		_:
 			_draw_pet(p, pet, dark)
 
@@ -215,6 +251,9 @@ func _draw_status(p: float, pet: Pet) -> void:
 		_text(Vector2(3, 19), "活了 %d 岁" % pet.age(), p, Look.INK, 3.6)
 		_text(Vector2(3, 27), "离开了" if pet.stage == "gone" else "已经不在了", p, Look.INK, 3.6)
 		return
+	if status_page == 2:
+		_draw_status_2(p, pet)
+		return
 	var lines := [["饿", pet.hunger], ["开心", pet.happy]]
 	for i in lines.size():
 		var y := 2 + i * 8
@@ -241,6 +280,53 @@ func _draw_out(p: float, pet: Pet) -> void:
 		_draw_monster(p, out_npc, Vector2(29, 14), true, Color.WHITE)
 	if out_item != "" and out_until - t < 2.2:
 		Art.draw(self, out_item, Vector2(x + 4, 4) * p, p)
+
+
+## 状态第二页: 三样本事 (练出来的 + 天生的) 和比赛级别
+func _draw_status_2(p: float, pet: Pet) -> void:
+	var i := 0
+	for s in Training.STATS:
+		var y := 1 + i * 7.5
+		Art.draw(self, Training.DRILLS[s][1], Vector2(2, y) * p, p)
+		_text(Vector2(12, y + 6), "%s %d" % [Training.STATS[s], pet.stat(s)], p, Look.INK, 3.8)
+		i += 1
+	var level := "还没赢过" if pet.rank == 0 else "赢过%s赛" % Training.RANK_NAMES[pet.rank - 1]
+	Art.draw(self, "trophy", Vector2(2, 24) * p, p)
+	_text(Vector2(12, 31), level, p, Look.INK, 3.6)
+
+
+## 比赛: 我在左边, 对手在右边, 上面两条血, 打一下往前冲一下
+func _draw_battle(p: float, pet: Pet) -> void:
+	var moves: Array = battle.log
+	var shown := mini(battle_step, moves.size())
+	var hp_me: int = battle.full_me
+	var hp_foe: int = battle.full_foe
+	var cur: Dictionary = {}
+	if shown > 0:
+		cur = moves[shown - 1]
+		hp_me = cur.hp_me
+		hp_foe = cur.hp_foe
+	_bar(Vector2(2, 2), float(hp_me) / battle.full_me, p)
+	_bar(Vector2(26, 2), float(hp_foe) / battle.full_foe, p)
+	var lunge := 0.0
+	var fresh := t < battle_next - 0.35 and not cur.is_empty()
+	if fresh:
+		lunge = 4.0
+	var me_x := 2.0 + (lunge if cur.get("who", "") == "me" else 0.0)
+	var foe_x := 30.0 - (lunge if cur.get("who", "") == "foe" else 0.0)
+	_draw_monster(p, pet.species, Vector2(me_x, 14), false, Color.WHITE)
+	_draw_monster(p, battle.foe_species, Vector2(foe_x, 14), true, Color.WHITE)
+	if fresh:
+		var target_x := 30.0 if cur.who == "me" else 4.0
+		_text(Vector2(target_x, 12), "躲开!" if cur.dodge else "-%d" % cur.dmg, p, Look.CALL if not cur.dodge else Look.INK, 3.6)
+	if shown >= moves.size() and moves.size() > 0 and t >= battle_next - 0.35:
+		_text(Vector2(17, 12), "赢了!" if battle.won else "输了", p, Look.INK, 4.4)
+
+
+func _bar(pos: Vector2, frac: float, p: float) -> void:
+	draw_rect(Rect2(pos * p, Vector2(20, 3) * p), Look.INK)
+	draw_rect(Rect2((pos + Vector2(0.5, 0.5)) * p, Vector2(19 * clampf(frac, 0, 1), 2) * p),
+		Color("7cd36b") if frac > 0.3 else Color("e8483a"))
 
 
 # ---------------------------------------------------------------- 小游戏

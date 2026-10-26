@@ -23,6 +23,7 @@ var play_bar: VBoxContainer       # 玩小游戏时, 下面换成这个 (小游�
 var play_row: HBoxContainer
 var sitter_button: Button
 var out_button: Button
+var title: TitleView = null      # 开始界面 (第四版; 按了「开始」就没了)
 var dialog: Control = null       # 现在开着的弹窗
 var dialog_buttons: Array = []   # 弹窗里的按钮 (测试按它们)
 var allow_quit := true
@@ -38,12 +39,30 @@ func _ready() -> void:
 	size = Vector2(720, 1280)
 	game = Game.load_saved()
 	_build()
+	if game.pet != null:
+		game.tick()
+		game.take_messages()  # 离开期间的事不一条条报, 看画面就知道
+		_shown_end = false
+	_refresh()
+	title = TitleView.new()
+	title.game = game
+	add_child(title)
+	title.start_pressed.connect(start_game)
+	title.help_pressed.connect(_show_help)
+
+
+## 开始界面上按了「开始」/「继续养」
+func start_game() -> void:
+	if title == null:
+		return
+	close_dialog()
+	title.queue_free()
+	title = null
 	if game.pet == null:
 		_ask_difficulty()
 	else:
 		game.tick()
-		game.take_messages()  # 离开期间的事不一条条报, 看画面就知道
-		_shown_end = false
+		game.take_messages()
 	_refresh()
 
 
@@ -139,6 +158,9 @@ func _process(delta: float) -> void:
 	_save_timer += delta
 	if _save_timer >= 30.0:
 		_save()
+	if _battle_text != "" and screen.battle_over():
+		_say(_battle_text)  # 比赛的画面放完了再说结果
+		_battle_text = ""
 	if screen.mode == "play" and screen.minigame != null:
 		message.text = screen.minigame.status_text()  # 玩的时候, 下面那行字显示分数
 		if screen.minigame.done:
@@ -202,7 +224,7 @@ func _refresh() -> void:
 	out_button.disabled = pet == null or pet.is_over() or pet.stage == "egg" or playing or away
 	grid.visible = not playing
 	play_bar.visible = playing
-	if pet == null or dialog != null:
+	if pet == null or dialog != null or title != null:
 		return
 	if not pet.wants_leave:
 		_asked_leave = false
@@ -262,7 +284,7 @@ func _say(text: String) -> void:
 # ---------------------------------------------------------------- 按钮
 
 func do_action(id: String) -> void:
-	if dialog != null or game.pet == null:
+	if dialog != null or game.pet == null or title != null:
 		return
 	var text := ""
 	match id:
@@ -384,6 +406,53 @@ func _after(text: String) -> void:
 	_say(text)
 
 
+# ---------------------------------------------------------------- 第四版: 训练和比赛
+
+func _ask_train() -> void:
+	var options := []
+	for s in Training.STATS:
+		options.append(["%s (%s %d)" % [Training.DRILLS[s][0], Training.STATS[s], game.pet.stat(s)], _train.bind(s)])
+	options.append(["算了", close_dialog])
+	_dialog("练什么?", "练一次涨 3 到 5 (管教满了多 1)。练完会饿一点、累一点 (饿 -1, 开心 -1), 要歇 30 分钟才能再练。\n" +
+		"本事长大了也留着。少年起能去比赛。", options)
+
+
+func _train(s: String) -> void:
+	close_dialog()
+	var text := game.act("train", s)
+	if game.last_result == "ok":
+		screen.show_effect(Training.DRILLS[s][1])
+	_after(text)
+
+
+func _ask_compete() -> void:
+	var p := game.pet
+	var options := []
+	for i in Training.RANKS.size():
+		if i > p.rank:
+			break
+		var info: Dictionary = Training.RANKS[i]
+		options.append(["%s (赢了 %d 魔晶%s)" % [info.name, info.prize, "" if i < p.rank else ", 拿奖杯"], _compete.bind(i)])
+	options.append(["算了", close_dialog])
+	var st := p.stats()
+	_dialog("比赛", "力气 %d  速度 %d  防御 %d\n自动对打: 力气打得疼, 速度先出手、容易躲开, 防御血多、挨打不疼。\n" % [st.power, st.speed, st.guard] +
+		"赢了升一级、拿奖杯; 输了也给一点魔晶。比完会累 (饿 -1, 开心 -1), 要歇 3 小时。", options)
+
+
+var _battle_text := ""
+
+
+func _compete(level: int) -> void:
+	close_dialog()
+	var res := game.compete(level)
+	if res.has("error"):
+		_after(res.text)
+		return
+	screen.show_battle(res)
+	_battle_text = res.text
+	_after("%s开始!" % Training.RANKS[level].name)
+
+
 ## what: meal 饭 / snack 零食 / 商店买的吃的代号
 func _feed(what: String) -> void:
 	close_dialog()
@@ -403,6 +472,10 @@ func _ask_play() -> void:
 		var info := MiniGames.info(id)
 		options.append([info.name, start_play.bind(id)])
 		lines.append("%s: %s" % [info.name, info.help])
+	if game.pet.stage != "baby":
+		options.append(["训练 (练本事)", _ask_train])
+	if game.pet.stage in ["teen", "adult"]:
+		options.append(["比赛", _ask_compete])
 	for toy in Items.of_kinds(["toy"]):
 		if toy in game.owned:
 			var wait := game.toy_wait(toy)
@@ -753,8 +826,12 @@ func _show_dex() -> void:
 	scroll.custom_minimum_size = Vector2(600, 760)
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	scroll.add_child(list)
-	_dialog("图鉴 %d/%d" % [found, Species.ORDER.size()], "一共养过 %d 只。隐藏的只有「原版严格」养得出来。" %
-		game.history.size(), [["关闭", close_dialog]], scroll)
+	var cups := []
+	for i in Training.RANK_NAMES.size():
+		if int(game.trophies.get(i, 0)) > 0:
+			cups.append("%s ×%d" % [Training.RANK_NAMES[i], game.trophies[i]])
+	_dialog("图鉴 %d/%d" % [found, Species.ORDER.size()], "一共养过 %d 只。隐藏的只有「原版严格」养得出来。\n奖杯: %s" %
+		[game.history.size(), "、".join(cups) if not cups.is_empty() else "还没有"], [["关闭", close_dialog]], scroll)
 
 
 func _show_help() -> void:
@@ -766,6 +843,7 @@ func _show_help() -> void:
 		"托人照看: 上学、上班的时候托给别人, 不叫你、不算失误, 每天最多 %s\n" % Game.sitter_text(Rules.SITTER_PER_DAY) +
 		"更多: 商店 (用魔晶买东西)、装扮 (帽子、领结、房间布置, 只是好看)、图鉴、搬家\n" +
 		"出门: 小孩起能去公园、森林、湖边、夜市逛 (有的要先解锁), 还能花魔晶住旅馆\n" +
-		"住的地方: 草原、湖泊、天空岛各有一套魔物, 养大一只成年就打开一个新地方\n\n" +
+		"住的地方: 草原、湖泊、天空岛各有一套魔物, 养大一只成年就打开一个新地方\n" +
+		"训练和比赛 (在「玩耍」里): 练力气、速度、防御, 少年起去比赛, 赢了拿奖杯和魔晶; 「状态」按两下看本事\n\n" +
 		"它跟着真实的时间长大: 一天长一岁。长大以后它会想出去闯荡, 可以放它走, 也可以留它到老。",
 		[["知道了", close_dialog]])

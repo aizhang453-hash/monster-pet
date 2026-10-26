@@ -42,6 +42,8 @@ func _run() -> void:
 	main.game.use_system_tz = false  # 游戏的 _ready 这时候才跑完
 	main.game.tz = 0
 	main.game.fixed_time = T0
+	await _shot("00_开始界面")
+	main.start_game()
 	await _shot("01_选难度")
 	main.choose(0)
 	await _shot("02_蛋")
@@ -210,5 +212,49 @@ func _run() -> void:
 	main._ask_place(Rules.EASY)
 	await _shot("34_在哪里养")
 	main.close_dialog()
+	# 第四版: 训练和比赛
+	q.place = "grass"
+	q.species = "huolong"
+	q.power = 42
+	q.speed = 18
+	q.guard = 25
+	q.rank = 2
+	q.hunger = 4
+	q.happy = 4
+	q.trained_at = -999999
+	q.matched_at = -999999
+	main._refresh()
+	main.do_action("play")
+	await _shot("35_玩什么_有训练比赛")
+	main.close_dialog()
+	main._ask_train()
+	await _shot("36_练什么")
+	main._train("power")
+	await _shot("37_练完")
+	main.screen.mode = "status"
+	main.screen.status_page = 2
+	main.screen.status_until = main.screen.t + 99
+	await _shot("38_状态第二页")
+	main.screen.mode = "pet"
+	main._ask_compete()
+	await _shot("39_比赛")
+	q.hunger = 4
+	q.happy = 4
+	q.matched_at = -999999
+	main.game.rng.seed = 2
+	main._compete(1)
+	for i in 6:
+		main.screen._process(0.35)
+	await _shot("40_对打中")
+	for i in 80:
+		main.screen._process(0.3)
+	await _shot("41_比完")
+	# 开始界面: 养着魔物的时候
+	var again = load("res://scenes/main.tscn").instantiate()
+	main.game.offset = main.game.clock() - int(Time.get_unix_time_from_system())  # 再打开的那个看真的钟, 拨到一样的时间
+	main.game.fixed_time = -1
+	main.game.save()
+	root.add_child(again)
+	await _shot("42_开始界面_继续养")
 	SaveGame.erase()
 	quit()

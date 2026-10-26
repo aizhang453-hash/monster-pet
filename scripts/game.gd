@@ -25,6 +25,7 @@ var places: Array = ["grass"]   # 解锁了的住的地方 (养大一只成年�
 var outings: Array = Outings.START.duplicate()   # 解锁了的出门地点
 var out_at := {}            # 每个地方上次有收获的时间
 var stats := {}             # 解锁要数的东西: park 去公园几次, apples 吃了几个苹果
+var trophies := {}          # 第四版: 奖杯 (级别 0–4 -> 拿过几个, 跟着主人)
 var rng := RandomNumberGenerator.new()
 
 
@@ -70,7 +71,7 @@ func _take_events() -> void:
 					_unlock_places()
 			"end":
 				history.append({"species": pet.species, "reason": e.reason, "age": pet.age(),
-					"difficulty": pet.difficulty, "ended_at": pet.ended_at})
+					"difficulty": pet.difficulty, "ended_at": pet.ended_at, "rank": pet.rank})
 		var text := describe(e)
 		if text != "":
 			messages.append({"text": text, "rank": RANK.get(e.kind, 1)})
@@ -176,6 +177,13 @@ func act(what: String, arg: Variant = null) -> String:
 		"scold":
 			r = pet.scold()
 			text = {"good": "管教了它, 它乖了一点", "sad": "它没闹, 被骂了很委屈 (不开心 -1)"}.get(r, "")
+		"train":
+			r = pet.train(arg)
+			if r == "ok":
+				text = "练%s, %s +%d!" % [Training.DRILLS[arg][0], Training.STATS[arg], pet.last_gain]
+			else:
+				text = {"small": "宝宝还太小, 长到小孩再练", "hungry": "饿着或不开心, 不想练", "tired": "刚练过, 歇一会儿吧 (%s以后)" %
+					sitter_text(maxi(60, pet.trained_at + Training.TRAIN_COOLDOWN - pet.now))}.get(r, "")
 		"sitter":
 			if pet.in_hotel():
 				r = pet.end_hotel("pickup")
@@ -316,6 +324,37 @@ func go_out(id: String) -> Dictionary:
 	return out
 
 
+## 比一场 (第四版): 回 Training.fight 的结果 + foe_species 对手是谁 + prize 给的魔晶 + text 说什么; 不能比就只有 error 和 text
+func compete(level: int) -> Dictionary:
+	tick()
+	var res := pet.compete(level)
+	if res.has("error"):
+		res.text = {"small": "长到少年才能比赛", "asleep": "它在睡觉", "sick": "它生病了, 先治好吧", "hungry": "饿着或不开心, 比不了",
+			"tired": "刚比过, 歇一会儿吧 (%s以后)" % sitter_text(maxi(60, pet.matched_at + Training.MATCH_COOLDOWN - pet.now)),
+			"locked": "先赢了下面一级再来"}.get(res.error, "现在比不了")
+		return res
+	var foes := []
+	for place in places:
+		for k in ["best", "good", "mid", "low", "bad1", "bad2"]:
+			var sp: String = Species.PLACES[place][k]
+			if sp != pet.species:
+				foes.append(sp)
+	res.foe_species = foes[rng.randi() % foes.size()]
+	var info: Dictionary = Training.RANKS[level]
+	res.prize = info.prize if res.won else int(info.prize / 4.0)
+	money += res.prize
+	if res.rank_up:
+		trophies[level] = int(trophies.get(level, 0)) + 1
+	if res.won:
+		res.text = "%s赢了「%s」! 得到魔晶 %d" % [info.name, Species.name_of(res.foe_species), res.prize]
+		if res.rank_up:
+			res.text += ", 拿到%s奖杯!" % Training.RANK_NAMES[level]
+	else:
+		res.text = "%s输给了「%s」…… 得到魔晶 %d" % [info.name, Species.name_of(res.foe_species), res.prize]
+	_take_events()
+	return res
+
+
 ## 住旅馆几个小时: ok / poor 钱不够 / 别的 (不能出门的原因)
 func hotel(hours: int) -> String:
 	tick()
@@ -390,9 +429,9 @@ func take_messages() -> Array:
 # ---------------------------------------------------------------- 存档
 
 func to_dict() -> Dictionary:
-	return {"version": 3, "pet": pet.to_dict() if pet != null else null, "dex": dex, "history": history,
+	return {"version": 4, "pet": pet.to_dict() if pet != null else null, "dex": dex, "history": history,
 		"offset": offset, "difficulty": difficulty, "money": money, "items": items, "owned": owned, "equip": equip,
-		"toy_used": toy_used, "places": places, "outings": outings, "out_at": out_at, "stats": stats}
+		"toy_used": toy_used, "places": places, "outings": outings, "out_at": out_at, "stats": stats, "trophies": trophies}
 
 
 static func from_dict(d: Dictionary) -> Game:
@@ -432,6 +471,8 @@ static func from_dict(d: Dictionary) -> Game:
 		g.out_at[k] = int(d.out_at[k])
 	for k in d.get("stats", {}):
 		g.stats[k] = int(d.stats[k])
+	for k in d.get("trophies", {}):
+		g.trophies[int(k)] = int(d.trophies[k])
 	g._unlock_places()  # 以前版本养大过成年的, 直接打开新地方
 	g.messages.clear()
 	return g

@@ -17,7 +17,9 @@ const BUTTON_HOVER := Color("ffe2a8")
 const BUTTON_DOWN := Color("ffc970")
 const CALL := Color("ff4a4a")
 
-# 注意: Mac 上要「PingFang SC」会拿到香港字形 (缺简体字), 所以苹方放最后 (《血脉与王冠》踩过的坑)
+## 第四版起自己带字体 (手机上没有电脑里的字体): 思源黑体 Noto Sans SC, 只挑了游戏用到的字 (tools/make_font.py)
+const FONT_FILE := "res://fonts/NotoSansSC-Medium-subset.otf"
+## 万一缺字, 用系统字体补上。注意: Mac 上要「PingFang SC」会拿到香港字形 (缺简体字), 所以苹方放最后 (《血脉与王冠》踩过的坑)
 const FONTS := ["Hiragino Sans GB", "Microsoft YaHei", "Noto Sans CJK SC", "Source Han Sans SC", "STHeiti", "PingFang SC"]
 
 static var _font: Font = null
@@ -26,10 +28,15 @@ static var _theme: Theme = null
 
 static func font() -> Font:
 	if _font == null:
-		var f := SystemFont.new()
-		f.font_names = PackedStringArray(FONTS)
-		f.font_weight = 600
-		_font = f
+		var backup := SystemFont.new()
+		backup.font_names = PackedStringArray(FONTS)
+		backup.font_weight = 600
+		var f: FontFile = load(FONT_FILE)
+		if f == null:
+			_font = backup
+		else:
+			f.fallbacks = [backup]
+			_font = f
 	return _font
 
 
