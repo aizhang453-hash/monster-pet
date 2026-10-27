@@ -73,5 +73,7 @@ func _care(p: Pet) -> void:
 		p.scold()
 	if p.call == "good":
 		p.praise()
+	if p.wants_match:
+		p.answer_match(-1)  # 第七版: 量难度的主人不结婚 (跟以前的数字好比)
 	if p.wants_leave:
 		p.answer_leave(true)

@@ -1079,6 +1079,39 @@ const ICONS := {
 		"kwwwwwk",
 		".kkkkk.",
 	],
+	# 第七版: 遗传来的头上的小特征 (画在帽子的位置, 戴了帽子就被盖住)
+	"feature_horn": [
+		".k...k.",
+		"kik.kik",
+		"kik.kik",
+	],
+	"feature_leaf": [
+		"gg.gg",
+		".gkg.",
+		"..k..",
+	],
+	"feature_fin": [
+		"..k..",
+		".kck.",
+		"kccck",
+	],
+	"feature_feather": [
+		".r.",
+		"ror",
+		"ror",
+		".k.",
+	],
+	"feature_tuft": [
+		"..kk",
+		".k..",
+		".k..",
+	],
+	"feature_flower": [
+		".p.p.",
+		"ppypp",
+		".p.p.",
+		"..g..",
+	],
 	"bubble": [
 		".kk...",
 		"kwlk..",
@@ -1107,6 +1140,7 @@ const ICONS := {
 
 static var _rows_cache := {}
 static var _tex_cache := {}
+static var _hue_cache := {}
 
 
 ## 一张图的每一行 (魔物把右半边补上)
@@ -1135,10 +1169,38 @@ static func size_of(name: String) -> Vector2i:
 	return Vector2i(r[0].length(), r.size())
 
 
+## 第七版: 一种魔物身上主要的颜色 (色相 0–1): 图里最多的那种有颜色的点 (不算描边、白、灰)
+static func main_hue(name: String) -> float:
+	if not _hue_cache.has(name):
+		var count := {}
+		for line in rows(name):
+			for ch in line:
+				if ch != "." and COLORS[ch].s >= 0.25 and COLORS[ch].v >= 0.3:
+					count[ch] = int(count.get(ch, 0)) + 1
+		var best := ""
+		for ch in count:
+			if best == "" or count[ch] > count[best]:
+				best = ch
+		_hue_cache[name] = COLORS[best].h if best != "" else 0.0
+	return _hue_cache[name]
+
+
+## 要把这种魔物的颜色转多少, 身上才是 hue 那个颜色 (hue < 0 = 不换颜色)
+static func shift_for(name: String, hue: float) -> float:
+	return 0.0 if hue < 0 else hue - main_hue(name)
+
+
+## 换颜色: 有颜色的点转一下色相, 描边 (很暗)、白色、灰色不变
+static func recolor(c: Color, shift: float) -> Color:
+	if shift == 0.0 or c.s < 0.25 or c.v < 0.3:
+		return c
+	return Color.from_hsv(fposmod(c.h + shift, 1.0), c.s, c.v, c.a)
+
+
 ## 在 ci 上画: 左上角在 pos, 每个点 px 那么大; flip 左右翻; tint 乘上的颜色 (关灯时变暗);
-## solid 给了的话整张图都用这一个颜色 (关灯时画白色的 Z)
+## solid 给了的话整张图都用这一个颜色 (关灯时画白色的 Z); shift 换颜色 (第七版: 遗传来的颜色)
 static func draw(ci: CanvasItem, name: String, pos: Vector2, px: float, flip := false, tint := Color.WHITE,
-		solid := Color(0, 0, 0, 0)) -> void:
+		solid := Color(0, 0, 0, 0), shift := 0.0) -> void:
 	var r := rows(name)
 	var w := r[0].length()
 	for y in r.size():
@@ -1148,21 +1210,44 @@ static func draw(ci: CanvasItem, name: String, pos: Vector2, px: float, flip := 
 			if ch == ".":
 				continue
 			var dx := (w - 1 - x) if flip else x
-			var color: Color = solid if solid.a > 0 else COLORS[ch] * tint
+			var color: Color = solid if solid.a > 0 else recolor(COLORS[ch], shift) * tint
 			ci.draw_rect(Rect2(pos + Vector2(dx, y) * px, Vector2(px, px)), color)
 
 
 ## 做成图片 (按钮上的图标、图鉴), 每个点放大 scale 倍
-static func image(name: String, scale: int, tint := Color.WHITE) -> Image:
+static func image(name: String, scale: int, tint := Color.WHITE, shift := 0.0) -> Image:
 	var r := rows(name)
 	var w := r[0].length()
 	var img := Image.create_empty(w * scale, r.size() * scale, false, Image.FORMAT_RGBA8)
-	for y in r.size():
-		for x in w:
-			var ch := r[y][x]
-			if ch != ".":
-				img.fill_rect(Rect2i(x * scale, y * scale, scale, scale), COLORS[ch] * tint)
+	_paint(img, name, Vector2i.ZERO, scale, tint, shift)
 	return img
+
+
+static func _paint(img: Image, name: String, at: Vector2i, scale: int, tint: Color, shift: float) -> void:
+	var r := rows(name)
+	for y in r.size():
+		for x in r[y].length():
+			var ch := r[y][x]
+			var cell := Rect2i((at.x + x) * scale, (at.y + y) * scale, scale, scale)
+			if ch != "." and Rect2i(Vector2i.ZERO, img.get_size()).encloses(cell):
+				img.fill_rect(cell, recolor(COLORS[ch], shift) * tint)
+
+
+## 第七版: 一只有遗传的魔物的图 (look = {species, hue, feature}): 换了颜色, 头上画遗传来的小特征
+static func look_texture(look: Dictionary, scale: int) -> ImageTexture:
+	var species: String = look.species
+	var hue: float = look.get("hue", -1.0)
+	var feature: String = look.get("feature", "")
+	var key := "look/%s/%.3f/%s/%d" % [species, hue, feature, scale]
+	if not _tex_cache.has(key):
+		var img := image(species, scale, Color.WHITE, shift_for(species, hue))
+		var d: Dictionary = Species.DATA[species]
+		if feature != "" and d.has("hat"):
+			var fname := "feature_" + feature
+			var fs := size_of(fname)
+			_paint(img, fname, Vector2i(floori((16 - fs.x) / 2.0), maxi(0, int(d.hat) - fs.y)), scale, Color.WHITE, 0.0)
+		_tex_cache[key] = ImageTexture.create_from_image(img)
+	return _tex_cache[key]
 
 
 ## 一块纯色 (墙纸、地毯的样子), 带描边

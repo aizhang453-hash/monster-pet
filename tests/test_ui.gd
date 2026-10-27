@@ -49,6 +49,11 @@ func _button_texts() -> Array:
 	return texts
 
 
+## 状态第一页 (名片) 上的字
+func _card() -> String:
+	return " ".join(main.screen.card_lines(main.game.pet))
+
+
 func _later(seconds: int) -> void:
 	main.game.offset += seconds
 	main.game.tick()
@@ -89,7 +94,7 @@ func test_first_open_asks_difficulty_and_lays_an_egg() -> void:
 	eq(main.game.pet.difficulty, Rules.STRICT, "第二个按钮是原版严格")
 	check(main.buttons.feed.disabled, "还是蛋的时候不能喂")
 	check(not main.buttons.lights.disabled)
-	has_text(main.info.text, "孵出来")
+	has_text(main.message.text, "孵出来")
 	check(FileAccess.file_exists(SaveGame.path()), "选完就存档了 (存在临时文件夹)")
 
 
@@ -115,13 +120,18 @@ func test_status_and_lights_and_clean() -> void:
 	_later(6 * 60)
 	main.do_action("status")
 	eq(main.screen.mode, "status")
-	eq(main.screen.status_page, 1)
+	eq(main.screen.status_page, 1, "第一页是名片 (照拓麻歌子)")
+	var card := _card()
+	for word in ["小团子", "0 岁", "住在草原", "放宽", "魔晶 30"]:
+		has_text(card, word)
 	main.do_action("status")
-	eq(main.screen.status_page, 2, "再按一次看第二页 (本事)")
+	eq(main.screen.status_page, 2, "第二页: 饿、开心、干净、管教")
 	main.do_action("status")
-	eq(main.screen.status_page, 3, "第三页 (聪明时尚善良、工作)")
+	eq(main.screen.status_page, 3, "第三页: 本事")
 	main.do_action("status")
-	eq(main.screen.mode, "pet", "按第四次回去")
+	eq(main.screen.status_page, 4, "第四页: 聪明时尚善良、工作")
+	main.do_action("status")
+	eq(main.screen.mode, "pet", "按第五次回去")
 	main.do_action("lights")
 	check(not main.game.pet.lights, "关灯了")
 	main.do_action("lights")
@@ -217,11 +227,11 @@ func test_sitter_button() -> void:
 	check(main.game.pet.sitting())
 	eq(main.sitter_button.text, "接回来")
 	has_text(main.message.text, "还能托")
-	has_text(main.info.text, "托人照看中")
+	has_text(_card(), "托人照看中", "状态的名片上写着在哪")
 	check(main.buttons.feed.disabled, "托出去了不能喂")
 	check(not main.buttons.more.disabled)
 	_later(3600)
-	has_text(main._hint(), "还能照看", "没有新消息时, 下面那行显示还剩多久")
+	eq(main._hint(), "", "还剩多久画在小屏幕上, 下面那行不再说一遍 (第七版, 用户嫌重复)")
 	main.do_action("sitter")
 	check(not main.game.pet.sitting(), "接回来了")
 	check(not main.buttons.feed.disabled)
@@ -340,7 +350,7 @@ func test_hotel_from_the_out_menu() -> void:
 	eq(main.sitter_button.text, "接回来")
 	check(main.buttons.feed.disabled, "住旅馆不能喂")
 	check(main.out_button.disabled)
-	has_text(main.info.text, "住旅馆")
+	has_text(_card(), "住旅馆")
 	main.do_action("sitter")
 	check(not main.game.pet.in_hotel(), "接回来了")
 
@@ -359,7 +369,7 @@ func test_choose_where_to_raise_the_next_egg() -> void:
 	eq(main.dialog_buttons[1].text, "湖泊")
 	main.choose(1)
 	eq(main.game.pet.place, "lake")
-	has_text(main.info.text, "魔物蛋")
+	eq(main.game.pet.stage, "egg")
 	main.do_action("more")
 	var texts := []
 	for b in main.dialog_buttons:
@@ -549,3 +559,41 @@ func test_random_tapping() -> void:
 		if failures.size() > 10:
 			return
 	check(main.game.history.size() >= 1, "乱按了这么久, 至少结束过一只 (实际 %d 只)" % main.game.history.size())
+
+
+func test_matchmaker_marriage_and_next_generation() -> void:
+	_start()
+	_later(6 * 60)
+	var p: Pet = main.game.pet
+	p.hatched_at = p.now
+	p._become("huolong")
+	_feed_up()
+	main.game._take_events()
+	_later(Rules.MATCH_AFTER + 60)
+	_feed_up()
+	check(main.game.pet.wants_match, "成年一天后媒人来了")
+	main._refresh()
+	check(main.dialog != null, "弹出媒人的弹窗")
+	has_text(main.dialog.get_child(0).get_child(0).get_child(0).text, "媒人")
+	var texts := _button_texts()
+	eq(texts.size(), Genes.OFFERS + 1, "三位对象 + 「现在还不想结婚」: %s" % [texts])
+	has_text(texts[0], "头上")
+	main.choose(0)
+	eq(main.game.pet.end_reason, "married")
+	check(main.dialog != null, "结婚的结局画面")
+	has_text(main.dialog.get_child(0).get_child(0).get_child(0).text, "结婚了")
+	_pick("孵这颗蛋")
+	eq(main.game.pet.gen, 2, "孵出第 2 代")
+	eq(main.game.pet.stage, "egg")
+	_later(6 * 60 + 3600)
+	eq(main.game.pet.stage, "child")
+	has_text(_card(), "第 2 代")
+	_feed_up()
+	main.do_action("out")
+	check("爸妈家" in _button_texts(), "出门能去爸妈家: %s" % [_button_texts()])
+	_pick("爸妈家")
+	check(main.game.pet.sitting())
+	eq(main.sitter_button.text, "接回来")
+	has_text(_card(), "在爸妈家")
+	main.do_action("sitter")
+	check(not main.game.pet.sitting(), "接回来了")

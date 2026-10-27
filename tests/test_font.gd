@@ -4,8 +4,10 @@ extends TestCase
 
 
 func test_bundled_font_has_every_character() -> void:
-	var f: FontFile = load(Look.FONT_FILE)
+	# 不用缓存里那份: 游戏打开过的话, 那份挂上了系统字体当后备, 缺的字也会说「有」(第七版才发现)
+	var f: FontFile = ResourceLoader.load(Look.FONT_FILE, "", ResourceLoader.CACHE_MODE_IGNORE)
 	check(f != null, "字体文件在")
+	check(f.fallbacks.is_empty(), "检查的这份没有后备字体")
 	if f == null:
 		return
 	var missing := {}

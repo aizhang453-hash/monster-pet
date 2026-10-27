@@ -23,8 +23,9 @@ static func at(id: String, diff := Rules.EASY, t := T0, rng_seed := 12345) -> Pe
 	return p
 
 
-## 很勤快的主人: 每 step 秒看一次, 该做的都做 (喂饱、哄开心、关灯、吃药、打扫、管教)
-static func care(p: Pet, until: int, step := 5 * 60, do_clean := true, do_medicine := true) -> void:
+## 很勤快的主人: 每 step 秒看一次, 该做的都做 (喂饱、哄开心、关灯、吃药、打扫、管教);
+## 媒人来了说「现在还不想结婚」(decline_match = false 就不理媒人, 让测试自己挑)
+static func care(p: Pet, until: int, step := 5 * 60, do_clean := true, do_medicine := true, decline_match := true) -> void:
 	while p.now < until and not p.is_over():
 		p.advance(mini(p.now + step, until))
 		if p.is_over():
@@ -49,3 +50,5 @@ static func care(p: Pet, until: int, step := 5 * 60, do_clean := true, do_medici
 			p.praise()
 		if p.wants_leave:
 			p.answer_leave(false)
+		if p.wants_match and decline_match:
+			p.answer_match(-1)

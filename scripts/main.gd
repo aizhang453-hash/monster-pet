@@ -16,7 +16,6 @@ const SITTER_RECT := Rect2(368, 688, 268, 80)
 var game: Game
 var screen: ScreenView
 var buttons := {}
-var info: Label
 var message: Label
 var grid: GridContainer
 var play_bar: VBoxContainer       # 玩小游戏时, 下面换成这个 (小游戏的按钮 + 「不玩了」)
@@ -31,6 +30,7 @@ var _tick_timer := 0.0
 var _save_timer := 0.0
 var _msg_until := 0.0
 var _asked_leave := false
+var _asked_match := false
 var _shown_end := false
 
 
@@ -75,13 +75,8 @@ func _build() -> void:
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	add_child(title)
 
-	info = Label.new()
-	info.position = Vector2(0, 98)
-	info.size = Vector2(720, 44)
-	info.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	info.add_theme_font_size_override("font_size", 26)
-	info.add_theme_color_override("font_color", Look.TEXT_DIM)
-	add_child(info)
+	# 第七版: 原来这里有一行小字 (名字、岁数、在哪、难度、魔晶), 用户嫌挤、跟屏幕上的重复;
+	# 照拓麻歌子改成平时只看魔物, 这些都在「状态」第一页 (名片) 里看
 
 	screen = ScreenView.new()
 	screen.game = game
@@ -207,7 +202,6 @@ func _draw() -> void:
 
 func _refresh() -> void:
 	var pet := game.pet
-	info.text = _info_text()
 	var fresh := game.take_messages()
 	if not fresh.is_empty():
 		var best: Dictionary = fresh[0]
@@ -233,28 +227,14 @@ func _refresh() -> void:
 		return
 	if not pet.wants_leave:
 		_asked_leave = false
+	if not pet.wants_match:
+		_asked_match = false
 	if pet.is_over() and not _shown_end:
 		_show_ending()
+	elif pet.wants_match and not _asked_match:
+		_ask_match()
 	elif pet.wants_leave and not _asked_leave:
 		_ask_leave()
-
-
-func _info_text() -> String:
-	var pet := game.pet
-	if pet == null:
-		return ""
-	var diff: String = Rules.DIFFICULTY_NAMES[pet.difficulty]
-	if pet.stage == "egg":
-		var left := maxi(0, pet.stage_at + Rules.STAGE_TIME.egg - pet.now)
-		return "魔物蛋 · 大约 %d 分钟后孵出来 · %s" % [ceili(left / 60.0), diff]
-	if pet.is_over():
-		return "%s · %s" % [pet.display_name(), "离开了" if pet.stage == "gone" else "已经不在了"]
-	var where: String = Species.PLACES[pet.place].name
-	if pet.sitting():
-		where = "托人照看中"
-	elif pet.in_hotel():
-		where = "住旅馆"
-	return "%s · %d 岁 · %s · %s · 魔晶 %d" % [pet.display_name(), pet.age(), where, diff, game.money]
 
 
 ## 没有新消息的时候, 下面那行显示现在该做什么
@@ -263,9 +243,9 @@ func _hint() -> String:
 	if pet == null or pet.is_over():
 		return ""
 	if pet.sitting():
-		return "托给别人照看了, 还能照看 %s" % Game.sitter_text(pet.sitter_left())
+		return ""  # 在哪、还剩多久, 小屏幕上画着, 不再说一遍
 	if pet.in_hotel():
-		return "住在旅馆, %s以后要去接 (晚了它会生气)" % Game.sitter_text(maxi(0, pet.hotel_until - pet.now))
+		return "约好的时间要去接, 晚了它会生气"
 	if pet.call != "":
 		return game.describe({"kind": "call", "what": pet.call})
 	if pet.sick:
@@ -360,6 +340,9 @@ func _ask_out() -> void:
 	elif stage == "adult":
 		options.append(["上班", _ask_work])
 		lines.append("上班: 找工作、上班赚魔晶")
+	if game.can_visit_parents():
+		options.append(["爸妈家", _go_parents])
+		lines.append("爸妈家: 爸妈免费照顾它 (跟托人照看共用每天 %s), 待够 1 小时还会教它一些东西" % Game.sitter_text(Rules.SITTER_PER_DAY))
 	for o in Outings.LIST:
 		if o.id in game.outings:
 			options.append([o.name, (_ask_hotel if o.id == "hotel" else go_out.bind(o.id))])
@@ -767,13 +750,14 @@ func _choose_difficulty(diff: String) -> void:
 		_new_egg(diff)
 
 
-func _new_egg(diff: String, place := "grass") -> void:
+func _new_egg(diff: String, place := "grass", genes := {}) -> void:
 	close_dialog()
-	game.new_egg(diff, -1, place)
+	game.new_egg(diff, -1, place, genes)
 	screen.mode = "pet"
 	screen.pet_x = 16.0
 	_shown_end = false
 	_asked_leave = false
+	_asked_match = false
 	_save()
 	_refresh()
 
@@ -782,8 +766,49 @@ func _show_ending() -> void:
 	_shown_end = true
 	var pet := game.pet
 	var head := "%s 出发了" % pet.display_name() if pet.stage == "gone" else "再见了, %s" % pet.display_name()
-	_dialog(head, "%s\n活了 %d 岁。已经记进图鉴。" % [Game.ending_text(pet.end_reason), pet.age()],
-		[["孵一颗新蛋", _ask_difficulty], ["先看看", close_dialog]])
+	if pet.end_reason == "married":
+		head = "%s 结婚了" % pet.display_name()
+	var options := [["孵一颗新蛋", _ask_difficulty], ["先看看", close_dialog]]
+	var more := ""
+	if not game.next_egg.is_empty():
+		# 第七版: 结婚生的、老死留下的蛋 (孩子长成哪一种还是看照顾, 颜色和头上的特征遗传)
+		options = [["孵这颗蛋 (第 %d 代)" % game.next_egg.gen, _hatch_next_egg], ["换一颗新蛋 (这颗就不要了)", _ask_difficulty],
+			["先看看", close_dialog]]
+		more = "\n\n留下的蛋会长成哪一种, 还是看你照顾得好不好; 身上的颜色和头上的「%s」是遗传来的。" % \
+			Genes.FEATURES.get(game.next_egg.feature, "")
+	_dialog(head, "%s\n活了 %d 岁。已经记进图鉴。%s" % [Game.ending_text(pet.end_reason), pet.age(), more], options)
+
+
+## 孵留下的那颗蛋: 难度、住的地方跟上一代一样
+func _hatch_next_egg() -> void:
+	_new_egg(game.pet.difficulty, game.pet.place, game.next_egg)
+
+
+## 第七版: 媒人上门, 介绍三位对象 (学拓麻歌子 Connection)
+func _ask_match() -> void:
+	_asked_match = true
+	var cells := []
+	for i in game.pet.match_offers.size():
+		var o: Dictionary = game.pet.match_offers[i]
+		cells.append(["%s\n头上: %s" % [Species.name_of(o.species), Genes.FEATURES.get(o.feature, "")], Art.look_texture(o, 4),
+			_answer_match.bind(i), true])
+	dialog_buttons = []
+	var grid_box := _button_grid(cells)
+	var extra := dialog_buttons.duplicate()
+	_dialog("媒人来了", "媒人给「%s」介绍了几位对象。\n挑一位结婚, 会生下一颗蛋, 两口子搬去爸妈家住 (忙的时候能把孩子送过去)。" % game.pet.display_name() +
+		"孩子长成哪一种还是看照顾, 颜色和头上的小特征从爸妈那里遗传。\n不想结婚也行, 媒人过一天再来。",
+		[["现在还不想结婚", _answer_match.bind(-1)]], grid_box)
+	dialog_buttons = extra + dialog_buttons
+
+
+func _answer_match(i: int) -> void:
+	close_dialog()
+	_after(game.act("match", i))
+
+
+func _go_parents() -> void:
+	close_dialog()
+	_after(game.act("parents"))
 
 
 func _ask_leave() -> void:
@@ -804,6 +829,8 @@ func _show_menu() -> void:
 	if game.places.size() > 1 and game.pet != null and not game.pet.is_over():
 		options.insert(2, ["搬家", _ask_move])
 	if game.pet != null and game.pet.is_over():
+		if not game.next_egg.is_empty():
+			options.append(["孵留下的那颗蛋 (第 %d 代)" % game.next_egg.gen, _hatch_next_egg])
 		options.append(["孵一颗新蛋", _ask_difficulty])
 	if OS.is_debug_build():
 		options.append(["快进 10 分钟 (试玩用)", _fast_forward.bind(10 * Rules.MIN)])
@@ -1027,9 +1054,12 @@ func _show_help() -> void:
 		"更多: 商店 (用魔晶买东西)、装扮 (帽子、领结、房间布置, 只是好看)、图鉴、纪念品、信箱、搬家\n" +
 		"出门: 小孩起能去公园、森林、湖边、夜市逛 (有的要先解锁), 还能花魔晶住旅馆\n" +
 		"住的地方: 草原、湖泊、天空岛各有一套魔物, 养大一只成年就打开一个新地方\n" +
-		"训练和比赛 (在「玩耍」里): 练力气、速度、防御, 少年起去比赛, 赢了拿奖杯和魔晶; 「状态」按两下看本事\n" +
+		"训练和比赛 (在「玩耍」里): 练力气、速度、防御, 少年起去比赛, 赢了拿奖杯和魔晶\n" +
+		"状态: 按一下看名片 (名字、第几代、岁数、体重、在哪、魔晶), 再按看饿和开心、本事、聪明善良\n" +
 		"上学和上班 (在「出门」里): 小孩和少年上课练聪明、时尚、善良; 成年找工作、上班赚魔晶\n" +
 		"节日: 新年、春节、儿童节、中秋、万圣节、圣诞节那天打开游戏, 有礼物、纪念品, 商店有节日的吃的\n" +
 		"管教: 无理取闹的时候骂它, 做了好事的时候夸它。用手指点它, 可以摸摸它\n\n" +
+		"结婚和下一代: 成年以后媒人会上门介绍对象, 结婚生下一颗蛋, 两口子搬去爸妈家 (出门 → 爸妈家, 能把孩子送过去); " +
+		"老死的也会留下一颗蛋。孩子长成哪一种看照顾, 颜色和头上的小特征是遗传的\n\n" +
 		"它跟着真实的时间长大: 一天长一岁。长大以后它会想出去闯荡, 可以放它走, 也可以留它到老。",
 		[["知道了", close_dialog]])

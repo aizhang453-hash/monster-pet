@@ -75,7 +75,18 @@ var work_at := -School.WORK_COOLDOWN
 var patted_at := -Rules.PAT_COOLDOWN
 var next_good := 0            # 下一次做好事 (该夸它了)
 
-var end_reason := ""          # neglect 没人照顾 / sick 病死 / old 老死 / left 离开了
+# 第七版: 结婚和下一代 (学拓麻歌子 Connection 的媒人、m!x 的遗传、On / Meets 的爸妈家)
+var gen := 1                  # 第几代
+var hue := -1.0               # 遗传来的身上的颜色 (色相 0–1; -1 = 这一种原来的颜色)
+var feature := ""             # 遗传来的头上的小特征 (Genes.FEATURES 的代号; 空 = 没有)
+var match_at := 0             # 媒人什么时候来
+var wants_match := false      # 媒人来了, 等你挑
+var match_offers: Array = []  # 媒人介绍的对象 [{species, hue, feature}] (Game 填)
+var partner := {}             # 结婚的对象
+var sit_where := "sitter"     # 托给谁: sitter 照看的人 / parents 爸妈家
+var parents_day := -1         # 哪天在爸妈家学过东西 (一天一次)
+
+var end_reason := ""          # neglect 没人照顾 / sick 病死 / old 老死 / left 离开了 / married 结婚了
 var ended_at := 0
 
 var rng := RandomNumberGenerator.new()
@@ -87,7 +98,8 @@ const SAVE_KEYS := ["difficulty", "place", "species", "stage", "born_at", "hatch
 	"asleep", "lights", "call", "call_at", "recall_at", "next_tantrum", "mistakes", "mistakes_life",
 	"lifespan", "wants_leave", "leave_ask_at", "end_reason", "ended_at", "sit_since", "sit_used", "sit_day", "hotel_until",
 	"power", "speed", "guard", "rank", "trained_at", "matched_at",
-	"smart", "style", "kind", "job", "classes", "class_at", "work_at", "patted_at", "next_good", "tidy", "next_dirty"]
+	"smart", "style", "kind", "job", "classes", "class_at", "work_at", "patted_at", "next_good", "tidy", "next_dirty",
+	"gen", "hue", "feature", "match_at", "wants_match", "match_offers", "partner", "sit_where", "parents_day"]
 
 
 static func create(t: int, diff: String, tz_offset := 0, rng_seed := 0) -> Pet:
@@ -141,6 +153,8 @@ func _next_due() -> int:
 	if stage == "adult":
 		if not wants_leave:
 			c.append(leave_ask_at)
+		if not wants_match and partner.is_empty():
+			c.append(match_at)
 		c.append(hatched_at + lifespan * Rules.DAY)
 	if hatched_at > 0:
 		c.append(hatched_at + (age() + 1) * Rules.DAY)
@@ -200,6 +214,12 @@ func _update() -> void:
 	if stage == "adult" and not wants_leave and now >= leave_ask_at:
 		wants_leave = true
 		events.append({"kind": "leave_ask"})
+	# 第七版: 媒人上门 (醒着、在家的时候)
+	if stage == "adult" and match_at == 0:
+		match_at = now + Rules.HOUR  # 以前版本的存档没有这个
+	if stage == "adult" and partner.is_empty() and not wants_match and now >= match_at and not asleep and not away():
+		wants_match = true
+		events.append({"kind": "match_ask"})
 
 
 func _grow() -> void:
@@ -236,6 +256,7 @@ func _become(id: String) -> void:
 		var life: int = Species.DATA[id].life + rng.randi_range(Rules.LIFESPAN_RANDOM[0], Rules.LIFESPAN_RANDOM[1])
 		lifespan = maxi(Rules.LIFESPAN_MIN, life)
 		leave_ask_at = now + Rules.LEAVE_ASK_AFTER
+		match_at = now + Rules.MATCH_AFTER
 	events.append({"kind": "grow", "id": id, "from": from})
 
 
@@ -411,12 +432,13 @@ func _deaths() -> void:
 
 
 func _end(reason: String) -> void:
-	stage = "gone" if reason == "left" else "dead"
+	stage = "dead" if reason in ["neglect", "sick", "old"] else "gone"  # 离开了、结婚了是 gone
 	end_reason = reason
 	ended_at = now
 	call = ""
 	asleep = false
 	wants_leave = false
+	wants_match = false
 	if sitting():
 		sit_used += now - sit_since
 		sit_since = 0
@@ -570,6 +592,20 @@ func answer_leave(let_go: bool) -> void:
 		leave_ask_at = now + Rules.LEAVE_ASK_AGAIN
 
 
+## 媒人介绍的对象挑哪一个 (i 是第几个; -1 = 现在还不想结婚, 媒人过一天再来)。挑了就结婚: 生下一颗蛋, 两口子搬去爸妈家
+func answer_match(i: int) -> void:
+	if not wants_match:
+		return
+	wants_match = false
+	if i < 0 or i >= match_offers.size():
+		match_at = now + Rules.MATCH_AGAIN
+		match_offers = []
+		return
+	partner = match_offers[i]
+	match_offers = []
+	_end("married")
+
+
 # ---------------------------------------------------------------- 托人照看
 
 func sitting() -> bool:
@@ -594,7 +630,8 @@ func sitter_left() -> int:
 	return maxi(0, Rules.SITTER_PER_DAY - sit_used)
 
 
-func start_sitter() -> String:
+## where: sitter 托给照看的人 / parents 送去爸妈家 (第七版; 一样的照顾, 共用每天的时间)
+func start_sitter(where := "sitter") -> String:
 	if is_over() or stage == "egg":
 		return "no"
 	if away():
@@ -605,6 +642,7 @@ func start_sitter() -> String:
 	if sit_used >= Rules.SITTER_PER_DAY:
 		return "used_up"
 	sit_since = now
+	sit_where = where
 	# 照看的人接手: 喂饱、哄开心、打扫、治病; 不叫你
 	hunger = 4
 	happy = 4
@@ -623,12 +661,19 @@ func start_sitter() -> String:
 	return "ok"
 
 
-## 接回来 (auto = 今天的时间用完, 照看的人送回来)
+## 接回来 (auto = 今天的时间用完, 照看的人送回来)。回 ok, 或者 taught (在爸妈家待够了, 爸妈教了它: 聪明、时尚、善良各 +1)
 func end_sitter(auto := false) -> String:
 	if not sitting():
 		return "no"
-	sit_used += now - sit_since
+	var stayed := now - sit_since
+	sit_used += stayed
 	sit_since = 0
+	var taught := false
+	if sit_where == "parents" and stayed >= Rules.PARENTS_TEACH and parents_day != _local_day(now):
+		parents_day = _local_day(now)
+		for s in ["smart", "style", "kind"]:
+			set(s, mini(Training.MAX_STAT, int(get(s)) + 1))
+		taught = true
 	hunger = 4  # 送回来之前喂饱了
 	happy = 4
 	var drop := Rules.heart_drop(stage, difficulty)
@@ -638,9 +683,9 @@ func end_sitter(auto := false) -> String:
 	next_dirty = now + Rules.DIRTY_EVERY[difficulty]
 	next_tantrum = maxi(next_tantrum, now + Rules.HOUR)
 	recall_at = now
-	events.append({"kind": "sit_end", "auto": auto})
+	events.append({"kind": "sit_end", "auto": auto, "where": sit_where, "taught": taught})
 	_settle()
-	return "ok"
+	return "taught" if taught else "ok"
 
 
 # ---------------------------------------------------------------- 旅馆 (第三版, 照拓麻歌子 On / Meets)

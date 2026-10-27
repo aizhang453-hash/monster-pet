@@ -92,9 +92,14 @@ func show_effect(name: String) -> void:
 	effect_until = t + 1.6
 
 
-## 按「状态」: 第一页 (饿、开心、干净、管教、岁数体重) → 第二页 (本事和比赛级别) → 第三页 (聪明时尚善良和工作) → 回去
+## 按「状态」(照拓麻歌子: 平时屏幕上只有魔物, 名字岁数这些都在状态里看; 用户 2026-10-26 说「参考拓麻歌子系列」):
+## 第一页名片 (名字、第几代、岁数、体重、在哪、难度、魔晶) → 第二页 (饿、开心、干净、管教) → 第三页 (本事和比赛级别)
+## → 第四页 (聪明时尚善良和工作) → 回去
+const STATUS_PAGES := 4
+
+
 func show_status() -> void:
-	if mode == "status" and status_page < 3:
+	if mode == "status" and status_page < STATUS_PAGES:
 		status_page += 1
 	elif mode == "status":
 		mode = "pet"
@@ -185,12 +190,22 @@ func _draw_room(p: float, tint: Color) -> void:
 		Art.draw(self, Items.ICON[id], Vector2(1, 30 - s.y) * p, p, false, tint)
 
 
-## 魔物 + 它的帽子、领结 (pos 是魔物图的左上角)
-func _draw_monster(p: float, species: String, pos: Vector2, flip: bool, tint: Color) -> void:
-	Art.draw(self, species, pos * p, p, flip, tint)
+## 你养的这只 (第七版: 带上遗传来的颜色和头上的特征)
+func _draw_me(p: float, pos: Vector2, flip: bool, tint: Color) -> void:
+	var pet := game.pet
+	_draw_monster(p, pet.species, pos, flip, tint, pet.hue, pet.feature)
+
+
+## 魔物 + 它的帽子、领结 (pos 是魔物图的左上角); hue 遗传来的颜色 (-1 = 原来的), feature 头上的特征 (戴了帽子就盖住)
+func _draw_monster(p: float, species: String, pos: Vector2, flip: bool, tint: Color, hue := -1.0, feature := "") -> void:
+	Art.draw(self, species, pos * p, p, flip, tint, Color(0, 0, 0, 0), Art.shift_for(species, hue))
 	var d: Dictionary = Species.DATA[species]
 	if not d.has("hat"):
 		return
+	if feature != "" and not game.equip.has("hat"):
+		var fname := "feature_" + feature
+		var fs := Art.size_of(fname)
+		Art.draw(self, fname, (pos + Vector2(8 - fs.x / 2.0, d.hat - fs.y)) * p, p, flip, tint)
 	if game.equip.has("neck"):
 		var n: String = Items.ICON[game.equip.neck]
 		var s := Art.size_of(n)
@@ -206,11 +221,31 @@ func _draw_pet(p: float, pet: Pet, dark: bool) -> void:
 	if pet.stage == "dead":
 		Art.draw(self, "ghost", Vector2(16, 10 + round(sin(t * 2.0) * 1.5)) * p, p)
 		return
+	if pet.stage == "gone" and pet.end_reason == "married" and not pet.partner.is_empty():
+		# 第七版: 结婚了, 两只站在一起, 中间一颗心, 前面一颗蛋
+		var pt: Dictionary = pet.partner
+		_draw_me(p, Vector2(4, 13), false, Color.WHITE)
+		_draw_monster(p, pt.species, Vector2(28, 13), true, Color.WHITE, float(pt.get("hue", -1.0)), str(pt.get("feature", "")))
+		Art.draw(self, "heart", Vector2(20.5, 4 + (int(t * 2) % 2)) * p, p)
+		Art.draw(self, "egg", Vector2(20, 22) * p, p * 0.5)
+		return
 	if pet.stage == "gone":
 		# 背着小包往右走, 走出屏幕
 		var x := fmod(t * 5.0, W + 24.0) - 18.0
-		_draw_monster(p, pet.species, Vector2(x, 14 + (int(t * 2) % 2)), false, Color.WHITE)
+		_draw_me(p, Vector2(x, 14 + (int(t * 2) % 2)), false, Color.WHITE)
 		Art.draw(self, "bag", Vector2(x - 3, 21) * p, p)
+		return
+	if pet.sitting() and pet.sit_where == "parents" and not game.parents.is_empty():
+		# 第七版: 在爸妈家, 屏幕上是爸妈
+		var a: Dictionary = game.parents.a
+		var b: Dictionary = game.parents.b
+		var hop := int(t * 2) % 2
+		Art.draw(self, "house", Vector2(26, 6) * p, p * 2)
+		_mini(a.species, Vector2(1, 21 + hop), false, float(a.get("hue", -1.0)))
+		_mini_me(Vector2(9.5, 22 + 1 - hop), false)
+		_mini(b.species, Vector2(18, 21 + hop), true, float(b.get("hue", -1.0)))
+		Art.draw(self, "heart", Vector2(10.5, 13 + hop) * p, p)
+		_text(Vector2(1, 7), "还剩 " + Game.sitter_text(pet.sitter_left()), p, Look.INK, 3.0)
 		return
 	if pet.sitting():
 		# 托给别人照看了: 屏幕上是别人家的小房子
@@ -243,14 +278,14 @@ func _draw_pet(p: float, pet: Pet, dark: bool) -> void:
 	for i in pet.poop:
 		Art.draw(self, "poop", Vector2(41, 25 - i * 7) * p, p, false, tint)
 	if pet.asleep:
-		_draw_monster(p, pet.species, Vector2(pet_x, 15), facing < 0, tint * Color(0.85, 0.85, 0.9))
+		_draw_me(p, Vector2(pet_x, 15), facing < 0, tint * Color(0.85, 0.85, 0.9))
 		var n := int(t * 1.5) % 3 + 1
 		for i in n:
 			Art.draw(self, "z", Vector2(pet_x + 14 + i * 4, 11 - i * 4) * p, p, false, Color.WHITE,
 				Color("e8e8ff") if dark else Color(0, 0, 0, 0))
 	else:
 		var bob := 1 if int(t * 2.0) % 2 == 0 else 0
-		_draw_monster(p, pet.species, Vector2(pet_x, 14 + bob), facing < 0, tint)
+		_draw_me(p, Vector2(pet_x, 14 + bob), facing < 0, tint)
 		if pet.tidy <= 1:
 			# 第六版: 脏了身上有泥点, 脏透了头上冒臭气
 			Art.draw(self, "dirt", Vector2(pet_x + 4, 24 + bob) * p, p, false, tint)
@@ -280,10 +315,13 @@ func _draw_status(p: float, pet: Pet) -> void:
 		_text(Vector2(3, 19), "活了 %d 岁" % pet.age(), p, Look.INK, 3.6)
 		_text(Vector2(3, 27), "离开了" if pet.stage == "gone" else "已经不在了", p, Look.INK, 3.6)
 		return
-	if status_page == 2:
-		_draw_status_2(p, pet)
+	if status_page == 1:
+		_draw_card(p, pet)
 		return
 	if status_page == 3:
+		_draw_status_2(p, pet)
+		return
+	if status_page == 4:
 		_draw_status_3(p, pet)
 		return
 	var lines := [["饿", pet.hunger], ["开心", pet.happy]]
@@ -296,10 +334,35 @@ func _draw_status(p: float, pet: Pet) -> void:
 	_text(Vector2(2, 21), "干净", p)
 	for b in 4:
 		Art.draw(self, "bubble", Vector2(18 + b * 7, 15) * p, p, false, Color.WHITE if b < pet.tidy else Color(0.45, 0.45, 0.5, 0.5))
-	_text(Vector2(2, 27), "管教", p)
+	_text(Vector2(2, 28), "管教", p)
 	for b in 4:
-		Art.draw(self, "block" if b < pet.discipline else "block_empty", Vector2(19 + b * 7, 23) * p, p)
-	_text(Vector2(2, 31.5), "%d 岁   %d 克" % [pet.age(), pet.weight], p, Look.INK, 3.4)
+		Art.draw(self, "block" if b < pet.discipline else "block_empty", Vector2(19 + b * 7, 24) * p, p)
+
+
+## 名片上的几行字 (名字, 然后三行小字); 测试也看这个
+func card_lines(pet: Pet) -> Array:
+	var where: String = Species.PLACES[pet.place].name
+	if pet.sitting():
+		where = "在爸妈家" if pet.sit_where == "parents" else "托人照看中"
+	elif pet.in_hotel():
+		where = "住旅馆"
+	else:
+		where = "住在" + where
+	var gen := "第 %d 代 · " % pet.gen if pet.gen > 1 else ""
+	return [pet.display_name(), "%s%d 岁 · %d 克" % [gen, pet.age(), pet.weight],
+		"%s · %s" % [where, Rules.DIFFICULTY_NAMES[pet.difficulty]], "魔晶 %d" % game.money]
+
+
+## 状态第一页: 名片 (左上名字, 右上它的样子, 下面几行小字)
+func _draw_card(p: float, pet: Pet) -> void:
+	var lines := card_lines(pet)
+	_text(Vector2(2, 8), lines[0], p, Look.INK, 5.6)
+	_mini_me(Vector2(38, 1), false)
+	draw_rect(Rect2(Vector2(2, 11) * p, Vector2(W - 4, 0.4) * p), Color(Look.INK, 0.4))
+	_text(Vector2(2, 18), lines[1], p, Look.INK, 3.6)
+	_text(Vector2(2, 24.5), lines[2], p, Look.INK, 3.6)
+	Art.draw(self, "coin", Vector2(2, 26.5) * p, p * 0.6)
+	_text(Vector2(7, 31), lines[3], p, Look.INK, 3.6)
 
 
 ## 出门的画面: 那个地方的底色和地面, 魔物走过去, 碰到的魔物站在右边, 带回来的东西冒在头上
@@ -311,7 +374,7 @@ func _draw_out(p: float, pet: Pet) -> void:
 			Art.draw(self, "lantern", Vector2(3 + i * 8, 2 + (i % 2) * 2) * p, p)
 	var elapsed := 3.5 - (out_until - t)
 	var x := 2.0 + minf(elapsed * 4.0, 10.0)  # 走过去, 走到碰到的魔物跟前停下
-	_draw_monster(p, pet.species, Vector2(x, 14 + (int(t * 3) % 2)), false, Color.WHITE)
+	_draw_me(p, Vector2(x, 14 + (int(t * 3) % 2)), false, Color.WHITE)
 	if out_npc != "":
 		_draw_monster(p, out_npc, Vector2(29, 14), true, Color.WHITE)
 	if out_item != "" and out_until - t < 2.2:
@@ -360,7 +423,7 @@ func _draw_battle(p: float, pet: Pet) -> void:
 		lunge = 4.0
 	var me_x := 2.0 + (lunge if cur.get("who", "") == "me" else 0.0)
 	var foe_x := 30.0 - (lunge if cur.get("who", "") == "foe" else 0.0)
-	_draw_monster(p, pet.species, Vector2(me_x, 14), false, Color.WHITE)
+	_draw_me(p, Vector2(me_x, 14), false, Color.WHITE)
 	_draw_monster(p, battle.foe_species, Vector2(foe_x, 14), true, Color.WHITE)
 	if fresh:
 		var target_x := 30.0 if cur.who == "me" else 4.0
@@ -370,9 +433,13 @@ func _draw_battle(p: float, pet: Pet) -> void:
 
 
 ## 小一号的魔物 (8 × 8 个点那么大)
-func _mini(species: String, pos: Vector2, flip: bool) -> void:
+func _mini(species: String, pos: Vector2, flip: bool, hue := -1.0) -> void:
 	var p := px()
-	Art.draw(self, species, pos * p, p * 0.5, flip)
+	Art.draw(self, species, pos * p, p * 0.5, flip, Color.WHITE, Color(0, 0, 0, 0), Art.shift_for(species, hue))
+
+
+func _mini_me(pos: Vector2, flip: bool) -> void:
+	_mini(game.pet.species, pos, flip, game.pet.hue)
 
 
 func _rope(p: float, y: float) -> void:
@@ -395,7 +462,7 @@ func _draw_play(p: float, pet: Pet) -> void:
 		"guess":
 			var guess := g as GuessGame
 			var x := 16.0 + guess.turn * 12
-			_draw_monster(p, pet.species, Vector2(x, 13), guess.turn < 0, Color.WHITE)
+			_draw_me(p, Vector2(x, 13), guess.turn < 0, Color.WHITE)
 			if guess.turn != 0:
 				_text(Vector2(14 if guess.turn > 0 else 2, 12), "猜中!" if guess.hit else "没猜中", p, Look.INK, 3.6)
 			elif not guess.done:
@@ -404,13 +471,13 @@ func _draw_play(p: float, pet: Pet) -> void:
 			var c := g as CatchGame
 			for f in c.fruits:
 				Art.draw(self, "berry", Vector2(f.x, f.y) * p, p)
-			_draw_monster(p, pet.species, Vector2(c.pet_x, 15), false, Color.WHITE)
+			_draw_me(p, Vector2(c.pet_x, 15), false, Color.WHITE)
 		"jump":
 			var j := g as JumpGame
 			draw_rect(Rect2(Vector2(0, 30) * p, Vector2(W, 2) * p), Color("8a7a5a"))
 			for r in j.rocks:
 				Art.draw(self, "rock", Vector2(r.x, 24) * p, p)
-			_draw_monster(p, pet.species, Vector2(JumpGame.PET_X, 14 - j.height()), false, Color.WHITE)
+			_draw_me(p, Vector2(JumpGame.PET_X, 14 - j.height()), false, Color.WHITE)
 		"quiz_smart", "quiz_style", "quiz_kind":
 			var qz := g as QuizGame
 			var q := qz.question()
@@ -440,7 +507,7 @@ func _draw_play(p: float, pet: Pet) -> void:
 			draw_rect(Rect2(Vector2(40, 14) * p, Vector2(2, 17) * p), Color("8a7a5a"))
 			if behind:
 				_rope(p, rope_y)
-			_draw_monster(p, pet.species, Vector2(16, 14 - rg.height()), false, Color.WHITE)
+			_draw_me(p, Vector2(16, 14 - rg.height()), false, Color.WHITE)
 			if not behind:
 				_rope(p, rope_y)
 		"climb":
@@ -448,18 +515,18 @@ func _draw_play(p: float, pet: Pet) -> void:
 			draw_rect(Rect2(Vector2(20, 0) * p, Vector2(8, 32) * p), Color("8a6a4a"))
 			Art.draw(self, "trophy", Vector2(20, 0) * p, p)
 			var cy := 24.0 - 22.0 * float(cg.score) / ClimbGame.GOAL
-			_mini(pet.species, Vector2(20, cy), cg.last == "r")
+			_mini_me(Vector2(20, cy), cg.last == "r")
 		"tug":
 			var tg := g as TugGame
 			var mark_x := 24.0 + tg.mark * 1.6
 			draw_rect(Rect2(Vector2(4, 25) * p, Vector2(40, 1) * p), Color("b0804a"))
 			draw_rect(Rect2(Vector2(24, 20) * p, Vector2(0.5, 10) * p), Look.INK)
 			draw_rect(Rect2(Vector2(mark_x - 1, 23) * p, Vector2(2, 5) * p), Look.CALL)
-			_mini(pet.species, Vector2(0 + minf(0, tg.mark) * 0.3, 18), false)
+			_mini_me(Vector2(0 + minf(0, tg.mark) * 0.3, 18), false)
 			_mini("nigui", Vector2(40 + maxf(0, tg.mark) * 0.3, 18), true)
 		"mimic":
 			var mg := g as MimicGame
-			_draw_monster(p, pet.species, Vector2(2, 14), false, Color.WHITE)
+			_draw_me(p, Vector2(2, 14), false, Color.WHITE)
 			_mini("yishou", Vector2(36, 18), true)
 			_text(Vector2(9, 12), MimicGame.ARROWS[mg.pose()], p, Look.INK, 7.0)
 			_text(Vector2(37, 15), MimicGame.ARROWS[mg.target], p, Look.CALL, 6.0)
@@ -467,7 +534,7 @@ func _draw_play(p: float, pet: Pet) -> void:
 				_text(Vector2(20, 30), "学对了!" if mg.hit else "不对", p, Look.INK, 3.6)
 		"flag":
 			var fg := g as FlagGame
-			_draw_monster(p, pet.species, Vector2(16, 14), false, Color.WHITE)
+			_draw_me(p, Vector2(16, 14), false, Color.WHITE)
 			# 两只手各拿一面旗: 左手红旗, 右手白旗; 举起来的那面高一点
 			for side in [["red", 11.0, Color("e8483a")], ["white", 35.0, Color("ffffff")]]:
 				var top: float = 8.0 if fg.raised == side[0] else 17.0
@@ -485,7 +552,7 @@ func _draw_play(p: float, pet: Pet) -> void:
 			draw_rect(Rect2(Vector2(0, 19) * p, Vector2(W, 0.5) * p), Color("8a7a5a"))
 			draw_rect(Rect2(Vector2(0, 30) * p, Vector2(W, 0.5) * p), Color("8a7a5a"))
 			_mini("nigui", Vector2(1 + sg.rival / SprintGame.GOAL * 33, 11), false)
-			_mini(pet.species, Vector2(1 + sg.me / SprintGame.GOAL * 33, 22), false)
+			_mini_me(Vector2(1 + sg.me / SprintGame.GOAL * 33, 22), false)
 		"dance":
 			var dg := g as DanceGame
 			var lanes := {"l": 12.0, "u": 22.0, "r": 32.0}
@@ -495,7 +562,7 @@ func _draw_play(p: float, pet: Pet) -> void:
 					Look.CALL if dg.flash == lane else Color(Look.INK, 0.35), 4.4)
 			for n in dg.notes:
 				_text(Vector2(lanes[n.lane], n.y + 3), DanceGame.ARROWS[n.lane], p, Look.INK, 5.0)
-			_mini(pet.species, Vector2(38, 2 + (int(t * 4) % 2)), int(t * 2) % 2 == 0)
+			_mini_me(Vector2(38, 2 + (int(t * 4) % 2)), int(t * 2) % 2 == 0)
 		"burger":
 			var bg := g as BurgerGame
 			_text(Vector2(2, 6), "客人要:", p, Look.INK, 3.2)
@@ -503,7 +570,7 @@ func _draw_play(p: float, pet: Pet) -> void:
 				draw_rect(Rect2(Vector2(4, 26 - i * 3.5) * p, Vector2(10, 3) * p), BurgerGame.COLORS[bg.order[i]])
 			for i in bg.built.size():
 				draw_rect(Rect2(Vector2(26, 28 - i * 3.5) * p, Vector2(14, 3) * p), BurgerGame.COLORS[bg.built[i]])
-			_mini(pet.species, Vector2(40, 22), true)
+			_mini_me(Vector2(40, 22), true)
 			if bg.result != "":
 				_text(Vector2(18, 10), "做好了!" if bg.result == "ok" else "做错了……", p, Look.INK, 4.0)
 		"memory":

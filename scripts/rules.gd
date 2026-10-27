@@ -59,6 +59,12 @@ const LEAVE_ASK_AGAIN := 2 * DAY
 const LIFESPAN_RANDOM := [-2, 4]
 const LIFESPAN_MIN := 8
 
+## 结婚 (第七版, 学拓麻歌子 Connection 的媒人): 成年以后过多久媒人上门; 不想结婚的话, 过多久再来 (我们定的)
+const MATCH_AFTER := DAY
+const MATCH_AGAIN := DAY
+## 爸妈家 (第七版, 学 On / Meets): 送去爸妈家跟托人照看一样 (共用每天的时间); 待够这么久, 爸妈教它一些东西 (一天一次)
+const PARENTS_TEACH := HOUR
+
 ## 托人照看 (学现代拓麻歌子的暂停 / 照看模式, 用户 2026-10-25 要的): 上学、上班时托给别人,
 ## 照看的人会喂饱、哄开心、打扫、治病、关灯, 这段时间不叫你、不算失误, 但它照样长大。每天最多托这么久 (我们定的)
 const SITTER_PER_DAY := 10 * HOUR

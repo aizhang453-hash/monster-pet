@@ -5,7 +5,7 @@ extends TestCase
 const T0 := Helpers.T0
 const PETS := 2000
 const ACTIONS := ["meal", "snack", "lights", "game", "medicine", "clean", "scold", "leave_yes", "leave_no", "sit", "unsit",
-	"food", "toy", "hotel", "unhotel", "move", "praise", "pat", "study", "job", "work", "train", "soil", "nothing"]
+	"food", "toy", "hotel", "unhotel", "move", "praise", "pat", "study", "job", "work", "train", "soil", "match_yes", "match_no", "parents", "nothing"]
 
 var rng := RandomNumberGenerator.new()
 var endings := {}
@@ -79,6 +79,13 @@ func _do(p: Pet, what: String) -> void:
 			p.train(Training.STATS.keys()[rng.randi() % 3])
 		"soil":
 			p.soil()
+		"match_yes":
+			p.match_offers = [{"species": "hailong", "hue": rng.randf(), "feature": "fin"}]
+			p.answer_match(0)
+		"match_no":
+			p.answer_match(-1)
+		"parents":
+			p.start_sitter("parents")
 		"medicine":
 			p.give_medicine()
 		"clean":
@@ -103,6 +110,10 @@ func _check(p: Pet, last_now: int) -> void:
 	check(p.discipline >= 0 and p.discipline <= 4, "%s 管教 %d" % [where, p.discipline])
 	check(p.poop >= 0 and p.poop <= Rules.MAX_POOP, "%s 便便 %d" % [where, p.poop])
 	check(p.tidy >= 0 and p.tidy <= 4, "%s 干净 %d" % [where, p.tidy])
+	check(p.gen >= 1 and p.hue >= -1.0 and p.hue < 1.0, "%s 第 %d 代, 颜色 %.2f" % [where, p.gen, p.hue])
+	check(not p.wants_match or (p.stage == "adult" and p.partner.is_empty()), "%s 只有没结婚的成年才有媒人" % where)
+	if p.end_reason == "married":
+		check(p.stage == "gone" and not p.partner.is_empty(), "%s 结婚了就离开, 有对象" % where)
 	check(p.mistakes >= 0 and p.mistakes_life >= p.mistakes, "%s 失误 %d/%d" % [where, p.mistakes, p.mistakes_life])
 	check(p.medicine_left >= 0 and p.medicine_left <= 2, "%s 药 %d" % [where, p.medicine_left])
 	check(Species.DATA.has(p.species), "%s 种类认识" % where)
@@ -115,7 +126,7 @@ func _check(p: Pet, last_now: int) -> void:
 	if p.stage == "adult":
 		check(p.lifespan >= Rules.LIFESPAN_MIN, "%s 寿命 %d" % [where, p.lifespan])
 	if p.is_over():
-		check(p.end_reason in ["neglect", "sick", "old", "left"], "%s 结局 %s" % [where, p.end_reason])
+		check(p.end_reason in ["neglect", "sick", "old", "left", "married"], "%s 结局 %s" % [where, p.end_reason])
 		check(p.call == "" and not p.wants_leave, "%s 结束了就不叫了" % where)
 	if p.away():
 		check(p.call == "" and not p.is_over(), "%s 托人照看、住旅馆的时候不叫你" % where)
@@ -134,6 +145,6 @@ func _check(p: Pet, last_now: int) -> void:
 		check(p.call == "" or p.call == "lights", "%s 睡着时只会因为没关灯叫你" % where)
 	for e in p.events:
 		check(e.kind in ["grow", "call", "mistake", "poop", "sick", "sleep", "wake", "leave_ask", "end", "sit_start", "sit_end",
-				"hotel_start", "hotel_end"],
+				"hotel_start", "hotel_end", "match_ask"],
 			"%s 事件 %s" % [where, e.kind])
 	p.events.clear()

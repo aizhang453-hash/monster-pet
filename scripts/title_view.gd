@@ -62,7 +62,8 @@ func _draw() -> void:
 	var px := 16.0
 	var wobble: float = round(sin(t * 5.0) * 1.5) * px / 4.0 if sprite == "egg" else 0.0
 	var bob: float = (1 if int(t * 2.0) % 2 == 0 else 0) * px / 2.0 if sprite != "egg" else 0.0
-	Art.draw(self, sprite, Vector2(360 - 8 * px + wobble, 590 - 8 * px + bob), px)
+	var shift := Art.shift_for(sprite, pet.hue) if sprite != "egg" else 0.0  # 第七版: 遗传来的颜色
+	Art.draw(self, sprite, Vector2(360 - 8 * px + wobble, 590 - 8 * px + bob), px, false, Color.WHITE, Color(0, 0, 0, 0), shift)
 	# 两边的小魔物 (图鉴里有的才露脸, 没有的是黑影)
 	var sides := ["huolong", "hailong", "fengying", "shuiling", "yunyang", "linlu"]
 	for i in sides.size():

@@ -49,7 +49,7 @@ func test_asks_to_leave_and_letting_go_ends_happily() -> void:
 	check(not p.wants_leave)
 	p.advance(T0 + Rules.LEAVE_ASK_AFTER)
 	check(p.wants_leave, "成年 3 天后说想离开")
-	eq(p.events[-1].kind, "leave_ask")
+	check(p.events.any(func(e): return e.kind == "leave_ask"), "发了「想离开」的事件")
 	p.answer_leave(true)
 	eq(p.stage, "gone")
 	eq(p.end_reason, "left")

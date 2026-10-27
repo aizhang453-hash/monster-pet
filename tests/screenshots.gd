@@ -106,7 +106,7 @@ func _v6_festivals() -> void:
 	main._refresh()
 	await _shot("69_脏兮兮")
 	main.screen.mode = "status"
-	main.screen.status_page = 1
+	main.screen.status_page = 2
 	main.screen.status_until = main.screen.t + 99
 	g.pet.tidy = 2
 	g.pet.discipline = 3
@@ -126,6 +126,58 @@ func _v6_festivals() -> void:
 	main.screen.t = main.screen.out_until - 1.0
 	await _shot("72_森林带回松果")
 	main.screen.mode = "pet"
+
+
+func _v7_family() -> void:
+	var g: Game = main.game
+	g.fixed_time = T0
+	g.offset = 0
+	g.places = ["grass", "lake", "sky"]
+	g.pet = Helpers.at("huolong", Rules.EASY, T0)
+	g.pet.hunger = 4
+	g.pet.happy = 4
+	g.rng.seed = 7
+	g.pet.wants_match = true
+	g.pet.events.append({"kind": "match_ask"})
+	g._take_events()
+	main._asked_match = false
+	main._shown_end = false
+	main._refresh()
+	await _shot("73_媒人来了")
+	main.choose(1)
+	main.screen.pet_x = 4
+	await _shot("74_结婚了")
+	main.close_dialog()
+	await _shot("75_结婚的画面")
+	main._show_ending()
+	main._hatch_next_egg()
+	await _shot("76_第二代的蛋")
+	var p: Pet = g.pet
+	p.hatched_at = p.now
+	p._become("jianjiao")
+	p.hunger = 4
+	p.happy = 4
+	g._take_events()
+	main.screen.pet_x = 16
+	main._refresh()
+	await _shot("77_第二代小孩")
+	p._become("shuiling")
+	p.hunger = 4
+	p.happy = 4
+	g._take_events()
+	main._refresh()
+	await _shot("78_第二代长大了")
+	main.screen.mode = "status"
+	main.screen.status_page = 1
+	main.screen.status_until = main.screen.t + 99
+	await _shot("78b_状态名片")
+	main.screen.mode = "pet"
+	main.do_action("out")
+	await _shot("79_出门有爸妈家")
+	main._go_parents()
+	await _shot("80_在爸妈家")
+	main.do_action("sitter")
+	g.equip.erase("hat")
 
 
 func _run() -> void:
@@ -322,7 +374,7 @@ func _run() -> void:
 	main._train("power")
 	await _shot("37_练完")
 	main.screen.mode = "status"
-	main.screen.status_page = 2
+	main.screen.status_page = 3
 	main.screen.status_until = main.screen.t + 99
 	await _shot("38_状态第二页")
 	main.screen.mode = "pet"
@@ -355,7 +407,7 @@ func _run() -> void:
 	q.style = 41
 	q.kind = 18
 	main.screen.mode = "status"
-	main.screen.status_page = 3
+	main.screen.status_page = 4
 	main.screen.status_until = main.screen.t + 99
 	await _shot("45_状态第三页")
 	main.screen.mode = "pet"
@@ -385,6 +437,7 @@ func _run() -> void:
 	# 第六版: 九个新小游戏
 	await _v6_games()
 	await _v6_festivals()
+	await _v7_family()
 	# 开始界面: 养着魔物的时候
 	var again = load("res://scenes/main.tscn").instantiate()
 	main.game.offset = main.game.clock() - int(Time.get_unix_time_from_system())  # 再打开的那个看真的钟, 拨到一样的时间

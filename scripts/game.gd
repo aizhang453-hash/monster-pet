@@ -31,6 +31,9 @@ var pending_letters: Array = []   # 还没寄到的信 {at, title, body} (比如
 # 第六版: 节日、纪念品 (跟着主人)
 var celebrated := {}        # 哪年哪个节已经收过礼物 ("spring2026" -> true)
 var souvenirs := {}         # 纪念品: 代号 -> 有几个
+# 第七版: 结婚和下一代
+var parents := {}           # 爸妈家住着谁: {a: 你养的那只的样子, b: 结婚的对象, gen: 它们是第几代}
+var next_egg := {}          # 留下的蛋 (结婚生的、老死留下的): {gen, hue, feature}; 空 = 没有
 var rng := RandomNumberGenerator.new()
 
 
@@ -48,13 +51,21 @@ func _refresh_tz() -> void:
 		tz = int(Time.get_time_zone_from_system().get("bias", 0)) * 60
 
 
-func new_egg(diff: String, t := -1, place := "grass") -> void:
+## genes: 第七版, 孵留下的那颗蛋 ({gen, hue, feature}); 不给就是一颗全新的蛋 (留下的蛋就不要了)
+func new_egg(diff: String, t := -1, place := "grass", genes := {}) -> void:
 	_refresh_tz()
 	difficulty = diff
 	var at := clock() if t < 0 else t
 	pet = Pet.create(at, diff, tz, at ^ 0x5eed + history.size())
 	pet.place = place if place in places else "grass"
-	messages.append({"text": "一颗魔物蛋出现了! 等一会儿就会孵出来。", "rank": 4})
+	pet.gen = int(genes.get("gen", 1))
+	pet.hue = float(genes.get("hue", -1.0))
+	pet.feature = str(genes.get("feature", ""))
+	next_egg = {}
+	if pet.gen > 1:
+		messages.append({"text": "第 %d 代的蛋! 等一会儿就会孵出来。" % pet.gen, "rank": 4})
+	else:
+		messages.append({"text": "一颗魔物蛋出现了! 等一会儿就会孵出来。", "rank": 4})
 
 
 ## 算到现在 (t 不给就是真的现在)
@@ -77,9 +88,21 @@ func _take_events() -> void:
 				if Species.DATA[e.id].stage == "adult":
 					_unlock_places()
 					_job_letter()
+			"match_ask":
+				pet.match_offers = Genes.offers(places, pet.species, rng)
 			"end":
 				history.append({"species": pet.species, "reason": e.reason, "age": pet.age(),
-					"difficulty": pet.difficulty, "ended_at": pet.ended_at, "rank": pet.rank})
+					"difficulty": pet.difficulty, "ended_at": pet.ended_at, "rank": pet.rank, "gen": pet.gen,
+					"partner": pet.partner.get("species", "")})
+				if e.reason == "married":
+					# 第七版: 生下一颗蛋, 两口子搬去爸妈家; 过一天寄信来 (信里的话是 Claude 暂定的)
+					parents = {"a": Genes.look_of(pet), "b": pet.partner, "gen": pet.gen}
+					next_egg = Genes.child(Genes.look_of(pet), pet.partner, pet.gen, rng)
+					pending_letters.append({"at": pet.ended_at + Rules.DAY, "title": "爸妈家寄来的信",
+						"body": "我们在爸妈家住得很好。\n忙的时候, 把孩子送过来吧 (出门 → 爸妈家), 我们会好好照顾它, 还会教它一些东西。\n—— %s和%s" %
+						[pet.display_name(), Species.name_of(pet.partner.species)]})
+				elif e.reason == "old":
+					next_egg = Genes.child(Genes.look_of(pet), {}, pet.gen, rng)  # 老死留下一颗蛋
 				if e.reason == "left":
 					# 放走的魔物过一天寄信回来 (第五版「收到信」; 信里的话是 Claude 暂定的, 用户想改随时改)
 					pending_letters.append({"at": pet.ended_at + Rules.DAY, "title": "「%s」寄来的信" % pet.display_name(),
@@ -91,7 +114,7 @@ func _take_events() -> void:
 
 
 ## 同时发生好几件事, 画面只显示最要紧的一条
-const RANK := {"end": 5, "grow": 4, "leave_ask": 4, "sit_end": 3, "hotel_end": 3, "sick": 3, "mistake": 3, "call": 2,
+const RANK := {"end": 5, "grow": 4, "leave_ask": 4, "match_ask": 4, "sit_end": 3, "hotel_end": 3, "sick": 3, "mistake": 3, "call": 2,
 	"poop": 1, "sleep": 1, "wake": 1, "sit_start": 1, "hotel_start": 1}
 
 
@@ -117,8 +140,14 @@ func describe(e: Dictionary) -> String:
 			return "早上好, 它醒了"
 		"leave_ask":
 			return "它长大了, 说想出去闯荡……"
+		"match_ask":
+			return "媒人来了, 想给它介绍对象……"
 		"sit_end":
-			return "今天托人照看的时间到了, 它被送回来了" if e.get("auto", false) else ""
+			if not e.get("auto", false):
+				return ""
+			if e.get("where", "") == "parents":
+				return "今天的时间到了, 爸妈把它送回来了" + ("。爸妈教了它一些东西 (聪明、时尚、善良 +1)" if e.get("taught", false) else "")
+			return "今天托人照看的时间到了, 它被送回来了"
 		"hotel_end":
 			return {"hungry": "它饿了或不开心, 旅馆把它送回家了", "late": "约好的时间没去接, 它自己回来了, 很生气 (开心 -2)"}.get(e.reason, "")
 		"end":
@@ -128,7 +157,8 @@ func describe(e: Dictionary) -> String:
 
 static func ending_text(reason: String) -> String:
 	return {"neglect": "没人照顾, 它死掉了……", "sick": "病得太重, 它死掉了……",
-		"old": "它老了, 安安静静地走了。", "left": "它出发去闯荡了! 一路顺风!"}.get(reason, "")
+		"old": "它老了, 安安静静地走了, 留下了一颗蛋。", "left": "它出发去闯荡了! 一路顺风!",
+		"married": "结婚了! 生下一颗蛋, 两口子搬去爸妈家住了。"}.get(reason, "")
 
 
 ## 玩家做一个动作 (先算到现在再做), 回一句话给画面显示
@@ -231,12 +261,29 @@ func act(what: String, arg: Variant = null) -> String:
 					add_souvenir("key")
 					text += ", 还带回了纪念品「%s」" % Items.SOUVENIRS.key.name
 			elif pet.sitting():
+				var at_parents := pet.sit_where == "parents"
 				r = pet.end_sitter()
-				text = "接回来了, 照看的人把它喂得饱饱的"
+				if at_parents:
+					text = "从爸妈家接回来了" + (", 爸妈教了它一些东西 (聪明、时尚、善良 +1)" if r == "taught" else "")
+				else:
+					text = "接回来了, 照看的人把它喂得饱饱的"
 			else:
 				r = pet.start_sitter()
 				text = {"ok": "托给别人照看了 (今天还能托 %s)" % sitter_text(pet.sitter_left()),
 					"used_up": "今天托人照看的时间用完了 (每天最多 %s)" % sitter_text(Rules.SITTER_PER_DAY)}.get(r, "")
+		"parents":
+			if not can_visit_parents():
+				r = "no"
+				text = "还没有爸妈家"
+			else:
+				r = pet.start_sitter("parents")
+				text = {"ok": "送到爸妈家了, 爸妈会照顾它",
+					"used_up": "今天托人照看的时间用完了, 爸妈家也是 (每天最多 %s)" % sitter_text(Rules.SITTER_PER_DAY)}.get(r, "")
+		"match":
+			# arg = 挑第几个 (-1 = 现在还不想结婚)
+			pet.answer_match(int(arg))
+			r = "married" if pet.end_reason == "married" else "later"
+			text = "" if r == "married" else "现在还不想结婚。媒人说过一天再来。"
 		"leave":
 			pet.answer_leave(bool(arg))
 			r = "ok"
@@ -282,6 +329,11 @@ func _unlock_outing(id: String, ok: bool) -> void:
 	if ok and not id in outings:
 		outings.append(id)
 		messages.append({"text": "新的地方「%s」可以去了!" % Outings.info(id).name, "rank": 5})
+
+
+## 第七版: 能不能送去爸妈家 (爸妈是上一代的时候)
+func can_visit_parents() -> bool:
+	return pet != null and not pet.is_over() and not parents.is_empty() and pet.gen == int(parents.gen) + 1
 
 
 ## 现在能不能出门: ok / no / small 太小 / asleep / sick / away
@@ -566,10 +618,11 @@ func take_messages() -> Array:
 # ---------------------------------------------------------------- 存档
 
 func to_dict() -> Dictionary:
-	return {"version": 6, "pet": pet.to_dict() if pet != null else null, "dex": dex, "history": history,
+	return {"version": 7, "pet": pet.to_dict() if pet != null else null, "dex": dex, "history": history,
 		"offset": offset, "difficulty": difficulty, "money": money, "items": items, "owned": owned, "equip": equip,
 		"toy_used": toy_used, "places": places, "outings": outings, "out_at": out_at, "stats": stats, "trophies": trophies,
-		"letters": letters, "pending_letters": pending_letters, "celebrated": celebrated, "souvenirs": souvenirs}
+		"letters": letters, "pending_letters": pending_letters, "celebrated": celebrated, "souvenirs": souvenirs,
+		"parents": parents, "next_egg": next_egg}
 
 
 static func from_dict(d: Dictionary) -> Game:
@@ -624,6 +677,13 @@ static func from_dict(d: Dictionary) -> Game:
 	for k in d.get("souvenirs", {}):
 		if Items.SOUVENIRS.has(k):
 			g.souvenirs[str(k)] = int(d.souvenirs[k])
+	# 第七版加的
+	if d.get("parents") is Dictionary and not d.parents.is_empty():
+		g.parents = d.parents
+		g.parents.gen = int(g.parents.get("gen", 1))
+	if d.get("next_egg") is Dictionary and not d.next_egg.is_empty():
+		g.next_egg = d.next_egg
+		g.next_egg.gen = int(g.next_egg.get("gen", 2))
 	g._unlock_places()  # 以前版本养大过成年的, 直接打开新地方
 	g.messages.clear()
 	return g
