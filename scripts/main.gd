@@ -33,6 +33,7 @@ var _asked_leave := false
 var _asked_match := false
 var _asked_personality := false
 var _asked_proposal := false     # 第九版: 朋友来求婚的弹窗问过了
+var _asked_retire := false       # 第十版: 老了想去当媒人的弹窗问过了
 var _shown_end := false
 
 
@@ -234,6 +235,8 @@ func _refresh() -> void:
 		_asked_match = false
 	if game.proposal == "":
 		_asked_proposal = false
+	if not pet.wants_retire:
+		_asked_retire = false
 	if pet.is_over() and not _shown_end:
 		_show_ending()
 	elif pet.wants_match and not _asked_match:
@@ -242,6 +245,8 @@ func _refresh() -> void:
 		_ask_proposal()
 	elif pet.wants_leave and not _asked_leave:
 		_ask_leave()
+	elif pet.wants_retire and not _asked_retire:
+		_ask_retire()
 	elif pet.personality == "" and pet.stage in ["child", "teen", "adult"] and not _asked_personality and not pet.away():
 		_ask_personality()
 
@@ -877,9 +882,22 @@ func _ask_match() -> void:
 		var o: Dictionary = game.pet.match_offers[i]
 		cells.append([_look_line(o), Art.look_texture(o, 4), _answer_match.bind(i), true])
 	dialog_buttons = []
-	var grid_box := _button_grid(cells)
+	var grid_box: Control = _button_grid(cells)
 	var extra := dialog_buttons.duplicate()
-	_dialog("媒人来了", "叮咚~ 媒人带着几位对象来看「%s」啦!\n挑一位结婚, 会生下一颗蛋, 两口子就搬去爸妈家住 (忙的时候能把孩子送过去)。" % game.pet.display_name() +
+	var who := "媒人"
+	if not game.matchmaker.is_empty():
+		# 第十版: 以前养的、老了去当媒人的那只来做媒
+		who = "当了媒人的「%s」(以前养的第 %d 代)" % [Species.name_of(game.matchmaker.species), int(game.matchmaker.get("gen", 1))]
+		var box := VBoxContainer.new()
+		var pic := TextureRect.new()
+		var look: Dictionary = game.matchmaker.duplicate()
+		look["old"] = true
+		pic.texture = Art.look_texture(look, 4)
+		pic.stretch_mode = TextureRect.STRETCH_KEEP_CENTERED
+		box.add_child(pic)
+		box.add_child(grid_box)
+		grid_box = box
+	_dialog("媒人来了", "叮咚~ %s带着几位对象来看「%s」啦!\n挑一位结婚, 会生下一颗蛋, 两口子就搬去爸妈家住 (忙的时候能把孩子送过去)。" % [who, game.pet.display_name()] +
 		"孩子长成哪一种还是看你照顾, 颜色、头上和身上的小东西从爸妈那儿遗传。\n拿不定主意? 先找算命的看看宝宝长什么样~",
 		[["找算命的看看", _ask_fortune], ["现在还不想结婚", _answer_match.bind(-1)]], grid_box)
 	dialog_buttons = extra + dialog_buttons
@@ -1001,6 +1019,82 @@ func _propose(sp: String) -> void:
 	var text := game.act("propose", sp)
 	close_dialog()
 	_after(text)
+
+
+## 第十版: 家谱 (学 On: 一代代往回看; 换一颗全新的蛋就是新的一家)
+func _show_family() -> void:
+	var tree := game.family_tree()
+	if tree.is_empty():
+		_dialog("家谱", "还没有家谱呢, 先孵一颗蛋吧~", [["好的", close_dialog]])
+		return
+	var list := VBoxContainer.new()
+	list.add_theme_constant_override("separation", 10)
+	for h in tree:
+		var row := HBoxContainer.new()
+		row.add_theme_constant_override("separation", 8)
+		var looks := [h.look]
+		if h.get("partner_look") is Dictionary and not h.partner_look.is_empty():
+			looks.append(h.partner_look)
+		for i in looks.size():
+			var lk: Dictionary = looks[i].duplicate()
+			lk["old"] = i == 0 and h.get("old", false)
+			var pic := TextureRect.new()
+			pic.texture = Art.look_texture(lk, 3)
+			pic.stretch_mode = TextureRect.STRETCH_KEEP_CENTERED
+			pic.custom_minimum_size = Vector2(80, 54)
+			row.add_child(pic)
+		var text := Label.new()
+		text.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		text.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		text.add_theme_font_size_override("font_size", 22)
+		var names := Species.name_of(str(h.look.species))
+		if looks.size() > 1:
+			names += " + " + Species.name_of(str(h.partner_look.species))
+		var how: String = "现在养着, %d 岁" % int(h.age) if h.get("current", false) else \
+			"%d 岁 · %s" % [int(h.age), FAMILY_END.get(str(h.reason), "")]
+		text.text = "第 %d 代 · %s\n%s" % [int(h.gen), names, how]
+		row.add_child(text)
+		list.add_child(row)
+	var box: Control = list
+	if tree.size() > 5:
+		var scroll := ScrollContainer.new()
+		scroll.custom_minimum_size = Vector2(600, 620)
+		scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+		scroll.add_child(list)
+		box = scroll
+	_dialog("%s的家谱" % game.family_name(), "一共 %d 代。孵留下的蛋, 家谱就接着往下写; 换一颗全新的蛋, 就是新的一家啦。" % tree.size(),
+		[["拍全家福", _show_family_photo], ["关闭", close_dialog]], box)
+
+
+const FAMILY_END := {"married": "结婚了", "old": "老了, 安安静静地走了", "matchmaker": "老了去当媒人", "left": "出去闯荡了",
+	"neglect": "没照顾好……", "sick": "病得太重……"}
+
+
+## 全家福 (学 On: 你的魔物、爸妈、爷爷奶奶一起拍, 上面写着「XX 家族」)
+func _show_family_photo() -> void:
+	var photo := game.family_photo()
+	var box := VBoxContainer.new()
+	box.add_theme_constant_override("separation", 6)
+	for k in [["grandparents", "爷爷奶奶"], ["parents", "爸爸妈妈"], ["me", "你家的魔物"]]:
+		var looks: Array = photo[k[0]] if photo[k[0]] is Array else [photo[k[0]]]
+		if looks.is_empty() or (looks[0] as Dictionary).is_empty():
+			continue
+		var label := Label.new()
+		label.text = k[1]
+		label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		label.add_theme_font_size_override("font_size", 22)
+		label.add_theme_color_override("font_color", Look.TEXT_DIM)
+		box.add_child(label)
+		var row := HBoxContainer.new()
+		row.alignment = BoxContainer.ALIGNMENT_CENTER
+		row.add_theme_constant_override("separation", 24)
+		for l in looks:
+			var pic := TextureRect.new()
+			pic.texture = Art.look_texture(l, 5 if k[0] == "me" else 4)
+			pic.stretch_mode = TextureRect.STRETCH_KEEP_CENTERED
+			row.add_child(pic)
+		box.add_child(row)
+	_dialog("%s 全家福" % game.family_name(), "", [["回家谱", _show_family], ["关闭", close_dialog]], box)
 
 
 ## 第九版: 交情满了的朋友来求婚
@@ -1125,10 +1219,28 @@ func _answer_leave(let_go: bool) -> void:
 	_after(game.act("leave", let_go))
 
 
+## 第十版: 老了, 想去当媒人 (学 Connection: 没结婚的老了自己变成媒人)
+func _ask_retire() -> void:
+	_asked_retire = true
+	var pic := TextureRect.new()
+	var look := Genes.look_of(game.pet)
+	look["old"] = true
+	pic.texture = Art.look_texture(look, 5)
+	pic.stretch_mode = TextureRect.STRETCH_KEEP_CENTERED
+	_dialog("它老啦", "「%s」上了年纪, 戴起了老花镜。媒人不会再来, 它也不结婚啦。\n它说想去当媒人, 帮以后的孩子们找对象~\n\n" % game.pet.display_name() +
+		"让它去: 它拄着拐杖出发, 留下一颗蛋; 以后来你家做媒的就是它。\n留下来: 它继续陪着你, 一直到老。",
+		[["让它去当媒人", _answer_retire.bind(true)], ["留下来陪我", _answer_retire.bind(false)]], pic)
+
+
+func _answer_retire(yes: bool) -> void:
+	close_dialog()
+	_after(game.act("retire", yes))
+
+
 func _show_menu() -> void:
 	var mail := "信箱" + (" (%d 封新信)" % game.unread() if game.unread() > 0 else "")
 	var options := [["商店", _show_shop], ["装扮", _show_dress], ["图鉴", _show_dex], ["纪念品", _show_souvenirs], [mail, _show_mail],
-		["朋友", _show_friends], ["算命屋", _show_fortune_house], ["怎么玩", _show_help]]
+		["朋友", _show_friends], ["家谱", _show_family], ["算命屋", _show_fortune_house], ["怎么玩", _show_help]]
 	if game.places.size() > 1 and game.pet != null and not game.pet.is_over():
 		options.insert(2, ["搬家", _ask_move])
 	if game.pet != null and game.pet.is_over():
@@ -1368,9 +1480,10 @@ func _show_help() -> void:
 		"用手指点点它, 就是摸摸它~\n\n" +
 		"出门: 公园、美食街、学校、上班、旅馆…… 有的地方要先解锁\n" +
 		"托人照看: 上学、上班的时候托给别人, 每天最多 %s\n" % Game.sitter_text(Rules.SITTER_PER_DAY) +
-		"更多: 商店、装扮、图鉴、纪念品、信箱、朋友、算命屋\n\n" +
+		"更多: 商店、装扮、图鉴、纪念品、信箱、朋友、家谱、算命屋\n\n" +
 		"它有时会自己溜出去散步; 有捣蛋精来捣乱的话, 在屏幕上点它一下就跑啦。过节那天打开游戏有礼物哦!\n" +
 		"长大以后, 媒人会上门介绍对象, 结婚会生下一颗蛋。它也可能想出去闯荡, 放不放它走由你决定。\n" +
 		"有的两位特别有缘, 生的宝宝照顾得好会长成没见过的混血魔物; 想知道谁跟谁有缘, 问问算命的吧!\n" +
-		"不想等媒人的话: 去「约会广场」约会, 顺利就能求婚; 也可以跟朋友慢慢变熟, 带戒指去求婚, 交情满了它还会来求婚。过节那天还有节日嘉宾哦",
+		"不想等媒人的话: 去「约会广场」约会, 顺利就能求婚; 也可以跟朋友慢慢变熟, 带戒指去求婚, 交情满了它还会来求婚。过节那天还有节日嘉宾哦\n" +
+		"长大以后好几天还没结婚, 它就老了: 媒人不来了, 也不能再结婚; 它会问你能不能去当媒人, 以后来你家做媒。",
 		[["知道了", close_dialog]])

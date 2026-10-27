@@ -64,6 +64,8 @@ func _walk(delta: float) -> void:
 	var step_time := 0.7
 	if game != null and game.pet != null and Personality.LIST.has(game.pet.personality):
 		step_time = Personality.LIST[game.pet.personality].speed  # 第八版: 活泼的走得快, 悠闲的慢吞吞
+	if game != null and game.pet != null and game.pet.old:
+		step_time *= 1.6  # 第十版: 老了走得慢
 	if _move_timer < step_time:
 		return
 	_move_timer = 0.0
@@ -206,15 +208,21 @@ func _draw_room(p: float, tint: Color) -> void:
 ## 你养的这只 (第七版: 带上遗传来的颜色和头上的特征)
 func _draw_me(p: float, pos: Vector2, flip: bool, tint: Color) -> void:
 	var pet := game.pet
-	_draw_monster(p, pet.species, pos, flip, tint, pet.hue, pet.feature, pet.extra)
+	_draw_monster(p, pet.species, pos, flip, tint, pet.hue, pet.feature, pet.extra, pet.old)
 
 
 ## 魔物 + 它的帽子、领结 (pos 是魔物图的左上角); hue 遗传来的颜色 (-1 = 原来的), feature 头上的特征 (戴了帽子就盖住);
 ## extra 第九版身上的东西 (翅膀、尾巴, 少年起才有; 先画, 魔物盖在上面)
-func _draw_monster(p: float, species: String, pos: Vector2, flip: bool, tint: Color, hue := -1.0, feature := "", extra := "") -> void:
+func _draw_monster(p: float, species: String, pos: Vector2, flip: bool, tint: Color, hue := -1.0, feature := "", extra := "",
+		old := false) -> void:
 	for part in Art.extra_parts(species, extra, flip):
 		Art.draw(self, part[0], (pos + part[1]) * p, p, part[2], tint)
+	if old:
+		Art.draw(self, "cane", (pos + Art.cane_spot(species, flip)) * p, p, flip, tint)  # 第十版: 老了拄拐杖
 	Art.draw(self, species, pos * p, p, flip, tint, Color(0, 0, 0, 0), Art.shift_for(species, hue))
+	if old:
+		for g in Art.glasses_pixels(species):  # 老花镜 (左右对称, 不用管翻没翻)
+			draw_rect(Rect2((pos + Vector2(g)) * p, Vector2(p, p)), Art.GLASSES * tint)
 	var d: Dictionary = Species.DATA[species]
 	if not d.has("hat"):
 		return
@@ -391,7 +399,7 @@ func card_lines(pet: Pet) -> Array:
 	if pet.walking():
 		where = "出去散步了"
 	var mood := " · 性格%s" % Personality.name_of(pet.personality) if pet.personality != "" else ""
-	return [pet.display_name(), "%s%d 岁 · %d 克" % [gen, pet.age(), pet.weight],
+	return [pet.display_name() + (" · 老啦" if pet.old else ""), "%s%d 岁 · %d 克" % [gen, pet.age(), pet.weight],
 		where + mood, "魔晶 %d · %s" % [game.money, Rules.DIFFICULTY_NAMES[pet.difficulty]]]
 
 

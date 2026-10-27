@@ -55,6 +55,8 @@ const ADULT_MISTAKES_DEATH := 5
 ## 成年以后过多久, 它会说想离开 (出去闯荡); 你不放它走的话, 过多久再问 (我们定的)
 const LEAVE_ASK_AFTER := 3 * DAY
 const LEAVE_ASK_AGAIN := 2 * DAY
+## 第十版: 成年以后多久还没结婚, 就老了 (学 Connection 1–4.5 代是 5 天; 用户 2026-10-26 定的: 老了媒人不来, 也不能再结婚)
+const SENIOR_AFTER := 5 * DAY
 ## 老死: 成年时定下活到几岁 = 种类的寿命 + 这两个数之间随机 (原版平均 12 岁左右, 最短 7, 最长 25)
 const LIFESPAN_RANDOM := [-2, 4]
 const LIFESPAN_MIN := 8

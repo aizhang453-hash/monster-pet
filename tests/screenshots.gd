@@ -366,6 +366,71 @@ func _v9() -> void:
 	main.close_dialog()
 
 
+## 第十版: 老年、去当媒人、家谱和全家福
+func _v10() -> void:
+	var g: Game = main.game
+	g.fixed_time = T0
+	g.offset = 0
+	g.places = ["grass", "lake", "sky"]
+	g.history.clear()
+	g.family_id = 1
+	g.parents = {}
+	g.next_egg = {}
+	# 三代: 火焰龙 + 海龙 → 水灵 + 云羊 → 现在的林鹿
+	g.pet = Helpers.at("huolong", Rules.EASY, T0)
+	g.pet.match_offers = [{"species": "hailong", "hue": 0.62, "feature": "fin", "extra": "wing"}]
+	g.pet.wants_match = true
+	g.act("match", 0)
+	g.new_egg(Rules.EASY, g.pet.now, "grass", g.next_egg.duplicate())
+	g.pet.hatched_at = g.pet.now
+	g.pet._become("shuiling")
+	g.pet.match_offers = [{"species": "yunyang", "hue": 0.8, "feature": "tuft", "extra": ""}]
+	g.pet.wants_match = true
+	g.act("match", 0)
+	g.new_egg(Rules.EASY, g.pet.now, "grass", g.next_egg.duplicate())
+	g.pet.hatched_at = g.pet.now - 6 * Rules.DAY
+	g.pet._become("linlu")
+	g.pet.personality = "mellow"
+	g.pet.hunger = 4
+	g.pet.happy = 4
+	g.pet.lifespan = 99
+	g.pet.old_at = g.pet.now + 60
+	g.fixed_time = g.pet.now + 120
+	g.tick()
+	main._asked_personality = true
+	main._shown_end = false
+	main._refresh()
+	await _shot("a1_老了想去当媒人")
+	main.close_dialog()
+	g.pet.wants_retire = false
+	main.screen.pet_x = 18
+	main._refresh()
+	main.message.text = "「林鹿」上了年纪, 戴起了老花镜~ 媒人不会再来了, 它会一直陪着你"
+	await _shot("a2_老了戴老花镜拄拐杖")
+	main.screen.mode = "status"
+	main.screen.status_page = 1
+	main.screen.status_until = main.screen.t + 99
+	await _shot("a3_名片老啦")
+	main.screen.mode = "pet"
+	main._show_family()
+	await _shot("a4_家谱")
+	main._show_family_photo()
+	await _shot("a5_全家福")
+	main.close_dialog()
+	g.matchmaker = {"species": "linlu", "hue": 0.1, "feature": "leaf", "extra": "", "gen": 3}
+	g.pet = Helpers.at("fengying", Rules.EASY, g.fixed_time)
+	g.pet.personality = "shy"
+	g.pet.match_offers = Genes.offers(g.places, "fengying", g.rng)
+	g.pet.wants_match = true
+	main._asked_match = false
+	main._refresh()
+	await _shot("a6_当了媒人的来做媒")
+	main.close_dialog()
+	g.pet.wants_match = false
+	g.matchmaker = {}
+	g.fixed_time = T0
+
+
 func _run() -> void:
 	main.game.use_system_tz = false  # 游戏的 _ready 这时候才跑完
 	main.game.tz = 0
@@ -626,6 +691,7 @@ func _run() -> void:
 	await _v7_family()
 	await _v8()
 	await _v9()
+	await _v10()
 	# 开始界面: 养着魔物的时候
 	var again = load("res://scenes/main.tscn").instantiate()
 	main.game.offset = main.game.clock() - int(Time.get_unix_time_from_system())  # 再打开的那个看真的钟, 拨到一样的时间

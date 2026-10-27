@@ -1546,6 +1546,15 @@ const ICONS := {
 		".f..f.",
 		"..ff..",
 	],
+	"cane": [  # 第十版: 老了拄的小拐杖
+		".hh",
+		"h.h",
+		"..h",
+		"..h",
+		"..h",
+		"..h",
+		"..h",
+	],
 	"twinkle": [  # 第九版: 大奖的蛋旁边闪的小星星
 		".y.",
 		"yyy",
@@ -1679,6 +1688,49 @@ static func extra_parts(species: String, extra: String, flip := false) -> Array:
 	return [[name, pos, flip]]
 
 
+## 第十版: 老了的样子。眼睛在哪 (左眼的列和行): 从帽子那一行往下找「描边色夹在身子中间」的点
+static func eye_spot(species: String) -> Vector2i:
+	var r := rows(species)
+	var d: Dictionary = Species.DATA.get(species, {})
+	var top := int(d.get("hat", 3))
+	for y in range(top, mini(int(d.get("neck", 12)) + 1, r.size())):
+		var line := r[y]
+		for x in range(1, 8):
+			if line[x] == "k" and not line[x - 1] in [".", "k"] and not line[x + 1] in [".", "k"]:
+				return Vector2i(x, y)
+	return Vector2i(5, top + 3)
+
+
+## 老花镜的点 (相对魔物图左上角): 两只眼睛各一个圈, 中间一根横梁
+static func glasses_pixels(species: String) -> Array:
+	var e := eye_spot(species)
+	var pts := []
+	for cx in [e.x, 15 - e.x]:
+		for dx in [-1, 0, 1]:
+			for dy in [-1, 0, 1]:
+				if dx != 0 or dy != 0:
+					pts.append(Vector2i(cx + dx, e.y + dy))
+	for x in range(e.x + 2, 15 - e.x - 1):
+		pts.append(Vector2i(x, e.y - 1))
+	return pts
+
+
+const GLASSES := Color("e0b84a")  # 老花镜的金边
+
+
+## 拐杖拄在哪: 身子最下面那一行的右边 (魔物翻过来就在左边)
+static func cane_spot(species: String, flip := false) -> Vector2:
+	var r := rows(species)
+	var bottom := r.size() - 1
+	while bottom > 0 and r[bottom].replace(".", "") == "":
+		bottom -= 1
+	var s := size_of("cane")
+	var x := _edge(r[maxi(0, bottom - 3)], false) + 1
+	if flip:
+		x = 16 - x - s.x
+	return Vector2(x, bottom - s.y + 1)
+
+
 ## 一行里最左 (left) / 最右边有颜色的点在第几格 (一整行都空就回中间)
 static func _edge(line: String, left: bool) -> int:
 	for i in line.length():
@@ -1716,7 +1768,7 @@ static func look_texture(look: Dictionary, scale: int) -> ImageTexture:
 	var hue: float = look.get("hue", -1.0)
 	var feature: String = look.get("feature", "")
 	var parts := extra_parts(species, str(look.get("extra", "")))
-	var key := "look/%s/%.3f/%s/%s/%d" % [species, hue, feature, look.get("extra", ""), scale]
+	var key := "look/%s/%.3f/%s/%s/%s/%d" % [species, hue, feature, look.get("extra", ""), look.get("old", false), scale]
 	if not _tex_cache.has(key):
 		var pad := 5 if not parts.is_empty() else 0
 		var img := Image.create_empty((16 + pad * 2) * scale, 16 * scale, false, Image.FORMAT_RGBA8)
@@ -1728,6 +1780,11 @@ static func look_texture(look: Dictionary, scale: int) -> ImageTexture:
 			var fname := "feature_" + feature
 			var fs := size_of(fname)
 			_paint(img, fname, Vector2i(pad + floori((16 - fs.x) / 2.0), maxi(0, int(d.hat) - fs.y)), scale, Color.WHITE, 0.0)
+		if look.get("old", false):
+			for p in glasses_pixels(species):  # 第十版: 老了戴老花镜
+				var cell := Rect2i((pad + p.x) * scale, p.y * scale, scale, scale)
+				if Rect2i(Vector2i.ZERO, img.get_size()).encloses(cell):
+					img.fill_rect(cell, GLASSES)
 		_tex_cache[key] = ImageTexture.create_from_image(img)
 	return _tex_cache[key]
 

@@ -39,7 +39,7 @@ static func care(p: Pet, until: int, step := 5 * 60, do_clean := true, do_medici
 		while p.happy < 4 and p.feed_snack() == "ok":
 			pass
 		if do_medicine:
-			while p.sick and p.give_medicine() != "healthy":
+			while p.sick and p.give_medicine() in ["more", "cured"]:
 				pass
 		if do_clean:
 			p.clean()

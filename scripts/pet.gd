@@ -99,6 +99,11 @@ var pair: Array = []          # 爸妈是哪两种 (第一代、老死留下的�
 var extra := ""               # 遗传来的身上的东西 (Genes.EXTRAS 的代号, 翅膀、尾巴; 空 = 没有; 少年起才长出来)
 var morph_at := 0             # 小孩搬了家, 什么时候变成新地方的小孩 (0 = 不变)
 
+# 第十版: 老年
+var old := false              # 老了 (成年好几天还没结婚): 媒人不来了, 也不能再结婚, 不会再想出去闯荡
+var old_at := 0               # 什么时候变老
+var wants_retire := false     # 老了以后想去当媒人, 等你答应
+
 var end_reason := ""          # neglect 没人照顾 / sick 病死 / old 老死 / left 离开了 / married 结婚了
 var ended_at := 0
 
@@ -113,7 +118,7 @@ const SAVE_KEYS := ["difficulty", "place", "species", "stage", "born_at", "hatch
 	"power", "speed", "guard", "rank", "trained_at", "matched_at",
 	"smart", "style", "kind", "job", "classes", "class_at", "work_at", "patted_at", "next_good", "tidy", "next_dirty",
 	"gen", "hue", "feature", "match_at", "wants_match", "match_offers", "partner", "sit_where", "parents_day",
-	"walk_until", "walk_from", "next_walk", "pest_at", "next_pest", "personality", "pair", "extra", "morph_at"]
+	"walk_until", "walk_from", "next_walk", "pest_at", "next_pest", "personality", "pair", "extra", "morph_at", "old", "old_at", "wants_retire"]
 
 
 static func create(t: int, diff: String, tz_offset := 0, rng_seed := 0) -> Pet:
@@ -165,6 +170,8 @@ func _next_due() -> int:
 	if Rules.STAGE_TIME.has(stage):
 		c.append(stage_at + Rules.STAGE_TIME[stage])
 	if stage == "adult":
+		if not old and partner.is_empty():
+			c.append(old_at)
 		if not wants_leave:
 			c.append(leave_ask_at)
 		if not wants_match and partner.is_empty():
@@ -237,13 +244,23 @@ func _update() -> void:
 		_deaths()
 		if is_over():
 			return
-	if stage == "adult" and not wants_leave and now >= leave_ask_at:
+	# 第十版: 成年好几天还没结婚就老了 (学 Connection): 媒人不来了, 不能再结婚, 也不想出去闯荡了; 会问你能不能去当媒人
+	if stage == "adult" and old_at == 0:
+		old_at = maxi(stage_at + Rules.SENIOR_AFTER, now + Rules.DAY)  # 以前版本的存档没有这个, 多给一天
+	if stage == "adult" and not old and partner.is_empty() and now >= old_at:
+		old = true
+		wants_match = false
+		match_offers = []
+		wants_leave = false
+		wants_retire = true
+		events.append({"kind": "old"})
+	if stage == "adult" and not old and not wants_leave and now >= leave_ask_at:
 		wants_leave = true
 		events.append({"kind": "leave_ask"})
 	# 第七版: 媒人上门 (醒着、在家的时候)
 	if stage == "adult" and match_at == 0:
 		match_at = now + Rules.HOUR  # 以前版本的存档没有这个
-	if stage == "adult" and partner.is_empty() and not wants_match and now >= match_at and not asleep and not away():
+	if stage == "adult" and not old and partner.is_empty() and not wants_match and now >= match_at and not asleep and not away():
 		wants_match = true
 		events.append({"kind": "match_ask"})
 
@@ -304,6 +321,7 @@ func _become(id: String) -> void:
 		lifespan = maxi(Rules.LIFESPAN_MIN, life)
 		leave_ask_at = now + Rules.LEAVE_ASK_AFTER
 		match_at = now + Rules.MATCH_AFTER
+		old_at = now + Rules.SENIOR_AFTER
 	events.append({"kind": "grow", "id": id, "from": from})
 
 
@@ -475,8 +493,8 @@ func _expire_call() -> void:
 # ---------------------------------------------------------------- 生病、死、老
 
 func _sickness() -> void:
-	if sick or stage == "egg":
-		return
+	if sick or stage == "egg" or walking():
+		return  # 第十版修: 散步的时候时间像停着, 不会在外面生病 (以前同一刻出门又老了生病, 在外面没法吃药)
 	if poop_since > 0 and now >= poop_since + Rules.POOP_SICK[difficulty]:
 		poop_since = now
 		_get_sick(false)
@@ -518,6 +536,7 @@ func _end(reason: String) -> void:
 	call = ""
 	asleep = false
 	wants_leave = false
+	wants_retire = false
 	wants_match = false
 	if sitting():
 		sit_used += now - sit_since
@@ -665,6 +684,15 @@ func scold() -> String:
 
 
 ## 它说想离开: 放它走 (true) 还是留下来 (false)
+## 第十版: 老了以后想去当媒人 (学 Connection: 没结婚的老了自己变成媒人)。答应就出发 (留下一颗蛋, 以后来你家做媒); 不答应就留下来陪你到老
+func answer_retire(yes: bool) -> void:
+	if not wants_retire:
+		return
+	wants_retire = false
+	if yes:
+		_end("matchmaker")
+
+
 func answer_leave(let_go: bool) -> void:
 	if not wants_leave:
 		return
@@ -689,7 +717,7 @@ func answer_match(i: int) -> void:
 
 ## 第九版: 跟这一位结婚 (约会广场约会成功的、朋友); 只有在家、醒着的成年才行。回结婚了没有
 func marry(look: Dictionary) -> bool:
-	if stage != "adult" or asleep or away() or not partner.is_empty():
+	if stage != "adult" or old or asleep or away() or not partner.is_empty():
 		return false
 	_wed(look)
 	return true

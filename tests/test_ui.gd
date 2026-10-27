@@ -721,3 +721,40 @@ func test_friend_proposal_dialog() -> void:
 	_pick("答应")
 	eq(main.game.pet.end_reason, "married")
 	eq(main.game.pet.partner.species, "yunyang")
+
+
+func test_old_age_retire_and_family_tree() -> void:
+	_start()
+	_later(6 * 60)
+	var p: Pet = main.game.pet
+	p.hatched_at = p.now
+	p._become("huolong")
+	p.lifespan = 99
+	p.old_at = p.now + 60
+	_feed_up()
+	main.close_dialog()
+	_later(120)
+	check(main.game.pet.old, "老了")
+	check(main.dialog != null, "问能不能去当媒人")
+	has_text(main.dialog.get_child(0).get_child(0).get_child(0).text, "老")
+	_pick("让它去当媒人")
+	eq(main.game.pet.end_reason, "matchmaker")
+	has_text(main.dialog.get_child(0).get_child(0).get_child(0).text, "出发")
+	_pick("孵这颗蛋")
+	eq(main.game.pet.gen, 2)
+	main.close_dialog()
+	main.do_action("more")
+	_pick("家谱")
+	has_text(main.dialog.get_child(0).get_child(0).get_child(0).text, "家谱")
+	_pick("拍全家福")
+	has_text(main.dialog.get_child(0).get_child(0).get_child(0).text, "全家福")
+	_pick("回家谱")
+	main.close_dialog()
+	var g: Game = main.game
+	g.pet.hatched_at = g.pet.now
+	g.pet._become("hailong")
+	g.pet.wants_match = true
+	g.pet.match_offers = [{"species": "linlu", "hue": 0.1, "feature": "leaf", "extra": ""}]
+	main._asked_match = false
+	main._refresh()
+	has_text(main.dialog.get_child(0).get_child(0).get_child(1).text, "当了媒人的「火焰龙」")

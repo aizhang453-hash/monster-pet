@@ -5,7 +5,7 @@ extends TestCase
 const T0 := Helpers.T0
 const PETS := 2000
 const ACTIONS := ["meal", "snack", "lights", "game", "medicine", "clean", "scold", "leave_yes", "leave_no", "sit", "unsit",
-	"food", "toy", "hotel", "unhotel", "move", "praise", "pat", "study", "job", "work", "train", "soil", "match_yes", "match_no", "parents", "shoo", "callback", "personality", "nothing"]
+	"food", "toy", "hotel", "unhotel", "move", "praise", "pat", "study", "job", "work", "train", "soil", "match_yes", "match_no", "parents", "shoo", "callback", "personality", "retire_yes", "retire_no", "nothing"]
 
 var rng := RandomNumberGenerator.new()
 var endings := {}
@@ -84,6 +84,10 @@ func _do(p: Pet, what: String) -> void:
 			p.answer_match(0)
 		"match_no":
 			p.answer_match(-1)
+		"retire_yes":
+			p.answer_retire(true)
+		"retire_no":
+			p.answer_retire(false)
 		"parents":
 			p.start_sitter("parents")
 		"shoo":
@@ -121,6 +125,7 @@ func _check(p: Pet, last_now: int) -> void:
 	check(p.personality == "" or Personality.LIST.has(p.personality), "%s 性格 %s" % [where, p.personality])
 	check(p.gen >= 1 and p.hue >= -1.0 and p.hue < 1.0, "%s 第 %d 代, 颜色 %.2f" % [where, p.gen, p.hue])
 	check(not p.wants_match or (p.stage == "adult" and p.partner.is_empty()), "%s 只有没结婚的成年才有媒人" % where)
+	check(not p.old or (not p.wants_match and not p.wants_leave and p.partner.is_empty()), "%s 老了: 没有媒人、不想离开、没结婚" % where)
 	if p.end_reason == "married":
 		check(p.stage == "gone" and not p.partner.is_empty(), "%s 结婚了就离开, 有对象" % where)
 	check(p.mistakes >= 0 and p.mistakes_life >= p.mistakes, "%s 失误 %d/%d" % [where, p.mistakes, p.mistakes_life])
@@ -135,7 +140,7 @@ func _check(p: Pet, last_now: int) -> void:
 	if p.stage == "adult":
 		check(p.lifespan >= Rules.LIFESPAN_MIN, "%s 寿命 %d" % [where, p.lifespan])
 	if p.is_over():
-		check(p.end_reason in ["neglect", "sick", "old", "left", "married"], "%s 结局 %s" % [where, p.end_reason])
+		check(p.end_reason in ["neglect", "sick", "old", "left", "married", "matchmaker"], "%s 结局 %s" % [where, p.end_reason])
 		check(p.call == "" and not p.wants_leave, "%s 结束了就不叫了" % where)
 	if p.away():
 		check(p.call == "" and not p.is_over(), "%s 托人照看、住旅馆的时候不叫你" % where)
@@ -153,7 +158,7 @@ func _check(p: Pet, last_now: int) -> void:
 		check(p.is_sleep_time(p.now), "%s 只在该睡的时候睡" % where)
 		check(p.call == "" or p.call == "lights", "%s 睡着时只会因为没关灯叫你" % where)
 	for e in p.events:
-		check(e.kind in ["grow", "morph", "call", "mistake", "poop", "sick", "sleep", "wake", "leave_ask", "end", "sit_start", "sit_end",
+		check(e.kind in ["grow", "morph", "old", "call", "mistake", "poop", "sick", "sleep", "wake", "leave_ask", "end", "sit_start", "sit_end",
 				"hotel_start", "hotel_end", "match_ask", "walk_start", "walk_end", "pest", "pest_hit"],
 			"%s 事件 %s" % [where, e.kind])
 	p.events.clear()

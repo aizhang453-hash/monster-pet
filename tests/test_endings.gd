@@ -67,7 +67,10 @@ func test_keeping_it_asks_again_later() -> void:
 	Helpers.care(p, p.now + Rules.LEAVE_ASK_AGAIN - HOUR)
 	check(not p.wants_leave, "留下的话这两天不再问 (勤快的主人每次都说留下)")
 	p.advance(p.now + HOUR)
-	check(p.wants_leave, "过两天再问一次")
+	if Rules.LEAVE_ASK_AFTER + Rules.LEAVE_ASK_AGAIN < Rules.SENIOR_AFTER:
+		check(p.wants_leave, "过两天再问一次")
+	else:
+		check(p.old and p.wants_retire and not p.wants_leave, "第十版: 过两天它正好老了, 不问离开, 问的是要不要去当媒人")
 
 
 func test_kept_pet_dies_of_old_age() -> void:

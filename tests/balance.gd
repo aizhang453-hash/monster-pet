@@ -44,7 +44,7 @@ func _run(diff: String, gap_min: int, school := false) -> void:
 		ends[p.end_reason] = int(ends.get(p.end_reason, 0)) + 1
 		if Species.DATA[p.species].stage == "adult":
 			adults[p.species] = int(adults.get(p.species, 0)) + 1
-	var safe := int(ends.get("left", 0)) + int(ends.get("old", 0))
+	var safe := int(ends.get("left", 0)) + int(ends.get("old", 0)) + int(ends.get("matchmaker", 0))
 	var dead := int(ends.get("neglect", 0)) + int(ends.get("sick", 0))
 	var names := []
 	for id in adults:
@@ -66,7 +66,7 @@ func _care(p: Pet) -> void:
 		pass
 	while p.happy < 4 and p.feed_snack() == "ok":
 		pass
-	while p.sick and p.give_medicine() != "healthy":
+	while p.sick and p.give_medicine() in ["more", "cured"]:
 		pass
 	p.clean()
 	p.clean()  # 第六版: 清完便便再洗澡
@@ -80,3 +80,5 @@ func _care(p: Pet) -> void:
 		p.shoo()  # 第八版: 看到捣蛋精就赶走 (散步就让它散)  # 第七版: 量难度的主人不结婚 (跟以前的数字好比)
 	if p.wants_leave:
 		p.answer_leave(true)
+	if p.wants_retire:
+		p.answer_retire(false)  # 第十版: 老了就留下来 (量难度的主人放走想离开的, 一般到不了老)
