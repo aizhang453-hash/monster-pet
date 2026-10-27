@@ -28,6 +28,9 @@ const STRONG := {
 	"huolong": "power", "shuiling": "speed", "linlu": "speed", "shixiang": "guard", "mogu": "guard", "xiaomo": "power",
 	"hailong": "power", "zhenzhu": "guard", "qingwa": "speed", "shixie": "guard", "dumu": "speed", "shayu": "power",
 	"fengying": "speed", "yunyang": "guard", "maotouying": "power", "shixianggui": "guard", "bianfu": "speed", "wuya": "power",
+	# 第九版: 混血和大奖那两族 (大奖照顾得好的那种跟隐藏的一样, 三样都加 15)
+	"zhengqilong": "power", "moguwa": "guard", "yuyunjing": "speed", "feilu": "speed", "feisha": "power", "yanjiagui": "guard",
+	"yunlong_good": "power", "yunlong_mid": "speed", "yunlong_bad": "power", "dujiao_good": "speed", "dujiao_mid": "guard", "dujiao_bad": "power",
 }
 
 
@@ -38,7 +41,7 @@ static func bonus(species: String, stat: String) -> int:
 		return 5
 	if d.stage != "adult":
 		return 0
-	if d.get("secret", false):
+	if d.get("secret", false) or d.get("grand", false):
 		return 15
 	return 15 if STRONG.get(species, "") == stat else 5
 

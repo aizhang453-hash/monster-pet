@@ -172,6 +172,8 @@ func _v7_family() -> void:
 	main.screen.status_until = main.screen.t + 99
 	await _shot("78b_状态名片")
 	main.screen.mode = "pet"
+	main._asked_personality = true  # 不让选性格的弹窗挡住
+	main.close_dialog()
 	main.do_action("out")
 	await _shot("79_出门有爸妈家")
 	main._go_parents()
@@ -237,6 +239,131 @@ func _v8() -> void:
 	await _shot("93_选难度")
 	main.close_dialog()
 	g.equip.erase("buddy")
+
+
+## 第九版: 混血、大奖、算命的、身上的遗传
+func _v9() -> void:
+	var g: Game = main.game
+	g.fixed_time = T0
+	g.offset = 0
+	g.places = ["grass", "lake", "sky"]
+	g.pet = Helpers.at("huolong", Rules.EASY, T0)
+	g.pet.match_offers = [{"species": "hailong", "hue": 0.6, "feature": "fin", "extra": "wing"},
+		{"species": "linlu", "hue": 0.08, "feature": "flower", "extra": "tail"},
+		{"species": "yunyang", "hue": 0.8, "feature": "tuft", "extra": ""}]
+	g.pet.wants_match = true
+	main._ask_match()
+	await _shot("94_媒人_身上的东西")
+	main._ask_fortune()
+	await _shot("95_算命的")
+	main._show_fortune_house()
+	await _shot("96_算命屋")
+	main._fortune_pick_b(Genes.look_of(g.pet))
+	await _shot("97_算命屋挑第二位")
+	main._fortune_show({"species": "feilu"}, {"species": "zhenzhu"})
+	await _shot("98_算命_大奖")
+	main.close_dialog()
+	g.pet.wants_match = false
+	g.pet = Helpers.at("zhengqilong", Rules.EASY, T0)
+	g.pet.extra = "wing"
+	g.pet.feature = "horn"
+	g.pet.gen = 2
+	main.screen.pet_x = 18
+	main._refresh()
+	main.message.text = g.describe({"kind": "grow", "id": "zhengqilong", "from": "yishou"})
+	await _shot("99_蒸汽龙_带翅膀")
+	g.pet = Helpers.at("feilu", Rules.EASY, T0)
+	g.pet.extra = "startail"
+	g.pet.hue = 0.55
+	main.screen.facing = -1
+	main._refresh()
+	await _shot("9a_飞鹿_星星尾巴_换了颜色")
+	main.screen.facing = 1
+	main._refresh()
+	await _shot("9b_飞鹿_翻过来")
+	g.new_egg(Rules.EASY, T0, "grass", {"gen": 3, "hue": 0.5, "feature": "horn", "extra": "wing", "pair": ["zhengqilong", "fengying"]})
+	var egg_text: String = g.messages[-1].text
+	main._refresh()
+	main.message.text = egg_text
+	await _shot("9c_闪闪发光的蛋")
+	g.pet = Helpers.at("dujiao_teen", Rules.EASY, T0)
+	g.pet.extra = "batwing"
+	main._refresh()
+	await _shot("9d_独角驹_蝠翼")
+	for id in Species.ORDER:
+		g.dex[id] = 1
+	main._show_dex()
+	for c in main.dialog.find_children("*", "ScrollContainer", true, false):
+		(c as ScrollContainer).scroll_vertical = 99999
+	await _shot("9e_图鉴_混血和大奖")
+	main.close_dialog()
+	# 第九版: 别的结婚办法
+	g.pet = Helpers.at("huolong", Rules.EASY, T0)
+	g.pet.place = "lake"
+	g.pet.hunger = 4
+	g.pet.happy = 4
+	g.dex.clear()
+	g.dex["huolong"] = 1
+	g.date_offers = []
+	g.date_day = -1
+	main._refresh()
+	main.do_action("out")
+	await _shot("9f_出门有约会广场")
+	main._ask_date()
+	await _shot("9g_约会广场")
+	g.date_offers = [{"species": "hailong", "hue": 0.6, "feature": "fin", "extra": "wing"}]
+	main._go_date(0)
+	await _shot("9h_约会好顺利")
+	main._answer_date(false)
+	g.befriend("yunyang")
+	g.befriend("qingwa")
+	g.befriend("qingwa")
+	g.befriend("qingwa")
+	g.items["ring"] = 1
+	main._show_friends()
+	await _shot("9i_朋友")
+	main.close_dialog()
+	main._show_shop_page("戒指")
+	await _shot("9j_商店_戒指")
+	main.close_dialog()
+	for i in Rules.FRIEND_MAX:
+		g.befriend("yunyang")
+	g.tick()
+	main._refresh()
+	await _shot("9k_朋友来求婚")
+	main.close_dialog()
+	g.proposal = ""
+	var xmas := int(Time.get_unix_time_from_datetime_dict({"year": 2026, "month": 12, "day": 25, "hour": 10, "minute": 0, "second": 0}))
+	g.fixed_time = xmas
+	g.pet = Helpers.at("zhenzhu", Rules.EASY, xmas)
+	g.pet.match_offers = Genes.add_guest(Genes.offers(g.places, "zhenzhu", g.rng), "feilu", "zhenzhu", g.rng)
+	g.pet.wants_match = true
+	main._ask_match()
+	await _shot("9l_圣诞节的节日嘉宾")
+	main._ask_fortune()
+	await _shot("9m_算命_嘉宾是大奖")
+	main.close_dialog()
+	g.pet.wants_match = false
+	g.fixed_time = T0
+	# 第九版: 每个地方的小孩
+	g.pet = Helpers.at("shuizhu", Rules.EASY, T0)
+	g.pet.place = "lake"
+	g.pet.personality = "shy"
+	main._asked_personality = true
+	main._refresh()
+	main.message.text = "在湖泊住了一阵子, 它变成了「小水珠」的样子!"
+	await _shot("9n_湖泊的小孩")
+	g.pet = Helpers.at("rongqiu", Rules.EASY, T0)
+	g.pet.place = "sky"
+	g.pet.personality = "shy"
+	main._refresh()
+	await _shot("9o_天空岛的小孩")
+	g.pet = Helpers.at("jianjiao", Rules.EASY, T0)
+	g.pet.personality = "shy"
+	main._refresh()
+	main._ask_move()
+	await _shot("9p_搬家")
+	main.close_dialog()
 
 
 func _run() -> void:
@@ -498,6 +625,7 @@ func _run() -> void:
 	await _v6_festivals()
 	await _v7_family()
 	await _v8()
+	await _v9()
 	# 开始界面: 养着魔物的时候
 	var again = load("res://scenes/main.tscn").instantiate()
 	main.game.offset = main.game.clock() - int(Time.get_unix_time_from_system())  # 再打开的那个看真的钟, 拨到一样的时间

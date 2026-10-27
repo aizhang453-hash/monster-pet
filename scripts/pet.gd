@@ -94,6 +94,11 @@ var pest_at := 0              # 捣蛋精什么时候来的 (0 = 没有)
 var next_pest := 0            # 下一次捣蛋精来
 var personality := ""         # 性格 (Personality.LIST 的代号; 空 = 还没定)
 
+# 第九版: 混血和大奖、身上的遗传
+var pair: Array = []          # 爸妈是哪两种 (第一代、老死留下的蛋是空的); 特别的一对生混血或大奖蛋 (Species.HYBRIDS / LINES)
+var extra := ""               # 遗传来的身上的东西 (Genes.EXTRAS 的代号, 翅膀、尾巴; 空 = 没有; 少年起才长出来)
+var morph_at := 0             # 小孩搬了家, 什么时候变成新地方的小孩 (0 = 不变)
+
 var end_reason := ""          # neglect 没人照顾 / sick 病死 / old 老死 / left 离开了 / married 结婚了
 var ended_at := 0
 
@@ -108,7 +113,7 @@ const SAVE_KEYS := ["difficulty", "place", "species", "stage", "born_at", "hatch
 	"power", "speed", "guard", "rank", "trained_at", "matched_at",
 	"smart", "style", "kind", "job", "classes", "class_at", "work_at", "patted_at", "next_good", "tidy", "next_dirty",
 	"gen", "hue", "feature", "match_at", "wants_match", "match_offers", "partner", "sit_where", "parents_day",
-	"walk_until", "walk_from", "next_walk", "pest_at", "next_pest", "personality"]
+	"walk_until", "walk_from", "next_walk", "pest_at", "next_pest", "personality", "pair", "extra", "morph_at"]
 
 
 static func create(t: int, diff: String, tz_offset := 0, rng_seed := 0) -> Pet:
@@ -198,6 +203,8 @@ func _next_due() -> int:
 		c.append(_sitter_end_time())
 	if in_hotel():
 		c.append(hotel_until)
+	if morph_at > 0:
+		c.append(morph_at)
 	var best := now + Rules.HOUR
 	for x in c:
 		if x > now and x < best:
@@ -210,6 +217,7 @@ func _update() -> void:
 	_grow()
 	if is_over():
 		return
+	_morph()
 	_sleep_or_wake()
 	if sitting() and now >= _sitter_end_time():
 		end_sitter(true)
@@ -250,8 +258,27 @@ func _grow() -> void:
 	_become(Species.next_form(self))
 
 
+## 第九版: 搬家 (学乐园: 小孩搬到别的地方, 过一会儿变成那个地方的小孩; 少年以后搬家只换风景)
+func set_place(p: String, t := -1) -> void:
+	place = p
+	morph_at = 0
+	if stage == "child" and not Species.DATA[species].has("line") and species != Species.child_of(place):
+		morph_at = (now if t < 0 else t) + Rules.MORPH_TIME
+
+
+func _morph() -> void:
+	if morph_at <= 0 or now < morph_at:
+		return
+	morph_at = 0
+	var target := Species.child_of(place)
+	if stage == "child" and not Species.DATA[species].has("line") and species != target:
+		species = target  # 不算长大 (失误、体重这些都不变)
+		events.append({"kind": "morph", "id": target})
+
+
 func _become(id: String) -> void:
 	var from := species
+	morph_at = 0
 	var was_egg := stage == "egg"
 	species = id
 	stage = Species.DATA[id].stage
@@ -657,7 +684,21 @@ func answer_match(i: int) -> void:
 		match_at = now + Rules.MATCH_AGAIN
 		match_offers = []
 		return
-	partner = match_offers[i]
+	_wed(match_offers[i])
+
+
+## 第九版: 跟这一位结婚 (约会广场约会成功的、朋友); 只有在家、醒着的成年才行。回结婚了没有
+func marry(look: Dictionary) -> bool:
+	if stage != "adult" or asleep or away() or not partner.is_empty():
+		return false
+	_wed(look)
+	return true
+
+
+func _wed(look: Dictionary) -> void:
+	partner = look.duplicate()
+	partner.erase("guest")
+	wants_match = false
 	match_offers = []
 	_end("married")
 

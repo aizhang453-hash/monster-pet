@@ -29,7 +29,9 @@ func test_every_dot_has_a_color() -> void:
 
 func test_every_species_has_a_picture() -> void:
 	for id in Species.DATA:
-		check(Art.HALF.has(id), "%s 有图" % id)
+		check(Art.HALF.has(id) or Art.SAME_AS.has(id), "%s 有图" % id)
+	for id in Art.SAME_AS:
+		check(Art.HALF.has(Art.SAME_AS[id]), "%s 借的图 %s 是有的" % [id, Art.SAME_AS[id]])
 	for id in Species.ORDER:
 		check(Species.DATA.has(id), "图鉴里的 %s 是一个种类" % id)
 

@@ -64,6 +64,14 @@ const MATCH_AFTER := DAY
 const MATCH_AGAIN := DAY
 ## 爸妈家 (第七版, 学 On / Meets): 送去爸妈家跟托人照看一样 (共用每天的时间); 待够这么久, 爸妈教它一些东西 (一天一次)
 const PARENTS_TEACH := HOUR
+## 第九版: 小孩搬到别的地方, 过多久变成那个地方的小孩 (学乐园, 用户 2026-10-26 选的)
+const MORPH_TIME := HOUR
+## 第九版: 别的结婚办法 (用户 2026-10-26 说拓麻歌子的结婚办法「都做上」; 数字都是 Claude 定的)
+const DATE_PER_DAY := 3       # 约会广场一天能约几次 (学 Paradise、V5 相亲节目)
+const DATE_OFFERS := 4        # 约会广场一次来几位 (学 Paradise、Uni)
+const FRIEND_MAX := 5         # 交情最多几颗心; 满了对方会来求婚 (学 m!x、On)
+const RING_HEARTS := 3        # 用普通戒指求婚, 交情要几颗心才答应 (钻石戒指一定答应)
+const GIFT_PRICE := 10        # 给朋友送礼物花几个魔晶 (交情 +1, 每位朋友一天一次)
 
 ## 它自己出去散步 (第八版, 学拓麻歌子天使): 醒着、心情好的时候隔多久溜出去一次, 出去多久 (都在这两个数之间随机, 我们定的)。
 ## 散步的时候不在家, 饿和开心不掉; 回来会带点小东西

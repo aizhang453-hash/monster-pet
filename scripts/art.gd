@@ -593,7 +593,337 @@ const HALF := {
 		"........",
 		"........",
 	],
+	# ---- 第九版: 每个地方的小孩 (学乐园; 小尖角是草原的) ----
+	"shuizhu": [  # 小水珠 (湖泊的小孩): 一颗水滴
+		"........",
+		".......k",
+		"......kl",
+		".....klc",
+		"....kccc",
+		"...kcccc",
+		"..kccccc",
+		"..kcckcc",
+		"..kcckcc",
+		"..kmcccc",
+		"..kcccck",
+		"..kccccc",
+		"...kcccc",
+		"....kkkk",
+		"........",
+		"........",
+	],
+	"rongqiu": [  # 小绒球 (天空岛的小孩): 头上一撮毛、两边小翅膀
+		"........",
+		"........",
+		"........",
+		".......f",
+		".....kkf",
+		"....kjjj",
+		"...kjjjj",
+		"..kjjkjj",
+		"w.kjjkjj",
+		"wwkmjjjj",
+		"xwkjjjjk",
+		".xkjjjjj",
+		"..kjjjjj",
+		"...kjjjj",
+		"....kkkk",
+		"........",
+	],
+	# ---- 第九版: 混血 (爸妈两种的样子拼在一起) ----
+	"zhengqilong": [  # 蒸汽龙 = 火焰龙 + 海龙: 红加蓝变紫, 头上冒蒸汽
+		"......xx",
+		"..xx.xww",
+		".xwwx.xx",
+		"..xx.kkk",
+		"..kkkvvv",
+		"...kvvvv",
+		"..kvvvvv",
+		"..kvwkvv",
+		"..kvwkvv",
+		"kkkvvvvv",
+		"klvvvvkk",
+		"kllvvjjj",
+		".kkvjjjj",
+		"...kvjjj",
+		"...kvvkk",
+		"...kkk..",
+	],
+	"moguwa": [  # 蘑菇蛙 = 毒蘑菇 + 大青蛙: 青蛙戴着蘑菇帽
+		".....kkk",
+		"...kkvvv",
+		"..kvvwvv",
+		".kvvvvvw",
+		"kkkkkkkk",
+		".kwwwkgg",
+		".kwkwkgg",
+		".kkkgggg",
+		".kgggggg",
+		".kggkkkk",
+		".kgggggg",
+		"..kggggg",
+		"..kggggg",
+		".kggkkkk",
+		".kkk....",
+		"........",
+	],
+	"yuyunjing": [  # 雨云精 = 水灵 + 云羊: 一朵会下雨的云
+		"........",
+		"......kk",
+		"...kkkww",
+		"..kwwwll",
+		".kwlllll",
+		"kwllllll",
+		"kllkllll",
+		"kllkllll",
+		"klmllllk",
+		".kllllll",
+		"..kkllkl",
+		"....kk.k",
+		"...c..c.",
+		"........",
+		"....c...",
+		"........",
+	],
+	"feilu": [  # 飞鹿 = 林鹿 + 风之鹰: 长了翅膀的鹿
+		"..h.h...",
+		"..hhh...",
+		"...hg...",
+		"...hhkkk",
+		"...knnnn",
+		"..knnnnn",
+		"..knnknn",
+		"..knnknn",
+		"..knnnnn",
+		"kk.knnnk",
+		"kwkkknnn",
+		"kwwwknnn",
+		".kxwknwn",
+		"..kkknnn",
+		"...knkkn",
+		"...kk.kk",
+	],
+	"feisha": [  # 飞鲨 = 鲨鱼怪 + 蝙蝠怪: 张着蝠翼的鲨鱼
+		".......k",
+		"......ks",
+		".....kss",
+		"k...ksss",
+		"ek.kssss",
+		"eeksssss",
+		"eeksrrks",
+		"eeekssss",
+		"eeksswww",
+		".ekswkwk",
+		"..ekkwkw",
+		"...kswww",
+		"...kssss",
+		"....kkss",
+		"......kk",
+		"........",
+	],
+	"yanjiagui": [  # 岩甲龟 = 石头魔像 + 石蟹: 背着石头壳的乌龟
+		"........",
+		"....kkkk",
+		"...kgggg",
+		"...kgkgg",
+		"...kgggk",
+		"..kkkkkk",
+		".ksssdss",
+		"ksssdddd",
+		"kssdssss",
+		"ksdsssss",
+		"kddddddd",
+		".kssssss",
+		"..kkkkkk",
+		".krrk...",
+		".kkk....",
+		"........",
+	],
+	# ---- 第九版: 大奖, 云龙一族 ----
+	"yunlong_baby": [  # 小云龙 (宝宝和小孩)
+		"........",
+		"........",
+		"........",
+		"........",
+		"....kf..",
+		".....kkk",
+		"....klll",
+		"...kllll",
+		"...klkll",
+		"...klkll",
+		"...kmlll",
+		"...klllk",
+		"..kxklll",
+		"...kllll",
+		"....kkkk",
+		"........",
+	],
+	"yunlong_teen": [  # 云龙
+		"........",
+		"........",
+		"...f....",
+		"...kf...",
+		"....kkkk",
+		"...kllll",
+		"..klllll",
+		"..kllkll",
+		"x.kllkll",
+		"xxkmllll",
+		"xxkllllk",
+		".x.kllll",
+		"...kllww",
+		"...kllww",
+		"...kllkk",
+		"...kkk..",
+	],
+	"yunlong_good": [  # 苍穹龙 (照顾得好)
+		"...f....",
+		"...ff.kk",
+		"....fkcc",
+		"....kccc",
+		"...kcccc",
+		"..kcwkcc",
+		"..kcwkcc",
+		"w.kccccc",
+		"wwkcccck",
+		"wxwkcccc",
+		"xwxkcwww",
+		".xwkcwww",
+		"..xkcwww",
+		"...kccww",
+		"...kcckk",
+		"...kkk..",
+	],
+	"yunlong_mid": [  # 雾龙 (普通)
+		"........",
+		"....d...",
+		".....kkk",
+		"....kxxx",
+		"...kxxxx",
+		"...kxkxx",
+		"...kxkxx",
+		"...kaxxx",
+		"..a.kxxk",
+		".aaa.kxx",
+		"aaa.kxxx",
+		".a.kxxax",
+		"..kxxxxx",
+		"..kxaxxx",
+		"...kkxxx",
+		".....kkk",
+	],
+	"yunlong_bad": [  # 雷暴龙 (照顾得不好)
+		"..y.....",
+		"...y.kkk",
+		"..y.keee",
+		"...keeee",
+		"..keeeee",
+		"..kerkee",
+		"..keeeee",
+		"k.keeeek",
+		"eekeewew",
+		"eeekeeee",
+		".eekeyee",
+		"..ekeeye",
+		"...keeee",
+		"...keekk",
+		"...kek..",
+		"...kkk..",
+	],
+	# ---- 第九版: 大奖, 独角兽一族 ----
+	"dujiao_baby": [  # 小独角 (宝宝和小孩)
+		"........",
+		"........",
+		"........",
+		"........",
+		".......f",
+		".....kpf",
+		"....kppw",
+		"...kpwww",
+		"...kwkww",
+		"...kwkww",
+		"...kmwww",
+		"...kwwwk",
+		"....kwww",
+		".....kkk",
+		"........",
+		"........",
+	],
+	"dujiao_teen": [  # 独角驹
+		"........",
+		".......f",
+		"......kf",
+		"....kkpf",
+		"...kppww",
+		"...kpwww",
+		"..kpwkww",
+		"..kpwkww",
+		"..kpwwww",
+		"...kmwwk",
+		"....kwww",
+		"...kwwww",
+		"..kwwwww",
+		"..kwwkww",
+		"..kwk.kw",
+		"..kk..kk",
+	],
+	"dujiao_good": [  # 彩虹独角兽 (照顾得好)
+		".......f",
+		"......kf",
+		"...rkkkf",
+		"..rokwww",
+		".roykwww",
+		".roykwkw",
+		".ogykwkw",
+		".gcvkmww",
+		"..cvkwwk",
+		"...vkwww",
+		"...kwwww",
+		"..kwwwww",
+		"..kwwwww",
+		"..kwwkww",
+		"..kwk.kw",
+		"..kk..kk",
+	],
+	"dujiao_mid": [  # 银角兽 (普通)
+		".......s",
+		"......ks",
+		"...lkkks",
+		"..lckwww",
+		".lcckwww",
+		".lcckwkw",
+		".lclkwkw",
+		"..clkqww",
+		"...lkwwk",
+		"....kwww",
+		"...kqwww",
+		"..kwwwww",
+		"..kqwwww",
+		"..kwwkww",
+		"..kqk.kw",
+		"..kk..kk",
+	],
+	"dujiao_bad": [  # 黑角兽 (照顾得不好)
+		".......r",
+		"......kr",
+		"...vkkkr",
+		"..vvkeee",
+		".vvvkeee",
+		".vvvkere",
+		"..vvkere",
+		"...vkeee",
+		"....kwek",
+		"....keee",
+		"...keeee",
+		"..keeeee",
+		"..keeeee",
+		"..keekee",
+		"..kek.ke",
+		"..kk..kk",
+	],
 }
+## 第九版: 跟别的魔物用同一张图 (大奖那一族的小孩跟宝宝一个样子)
+const SAME_AS := {"yunlong_child": "yunlong_baby", "dujiao_child": "dujiao_baby"}
 
 ## 小图标 (照原样画, 不翻)
 const ICONS := {
@@ -1172,6 +1502,55 @@ const ICONS := {
 		".p.p.",
 		"..g..",
 	],
+	# 第九版: 遗传来的身上的东西 (翅膀画在左边, 右边翻过来再画一个; 尾巴画在右边, 左下角接着身子)
+	"extra_wing": [
+		"kk..",
+		"kwk.",
+		"kwwk",
+		".kwk",
+		"..kk",
+	],
+	"extra_batwing": [
+		"e...",
+		"eek.",
+		"eeek",
+		"e.ek",
+	],
+	"extra_tail": [
+		"..kk",
+		".kwk",
+		"kwk.",
+		"kk..",
+	],
+	"extra_startail": [
+		"..y..",
+		".yyy.",
+		"..y..",
+		".k...",
+		"k....",
+	],
+	# 第九版: 求婚的戒指
+	"ring": [
+		"..yy..",
+		".y..y.",
+		"y....y",
+		".y..y.",
+		"..yy..",
+	],
+	"diamond_ring": [
+		"..ll..",
+		".lwwl.",
+		"..ff..",
+		".f..f.",
+		"f....f",
+		".f..f.",
+		"..ff..",
+	],
+	"twinkle": [  # 第九版: 大奖的蛋旁边闪的小星星
+		".y.",
+		"yyy",
+		".y.",
+	],
 	"bubble": [
 		".kk...",
 		"kwlk..",
@@ -1207,7 +1586,9 @@ static var _hue_cache := {}
 static func rows(name: String) -> PackedStringArray:
 	if not _rows_cache.has(name):
 		var out := PackedStringArray()
-		if HALF.has(name):
+		if SAME_AS.has(name):
+			out = rows(SAME_AS[name])
+		elif HALF.has(name):
 			for r in HALF[name]:
 				var right := ""
 				for i in range(r.length() - 1, -1, -1):
@@ -1221,7 +1602,7 @@ static func rows(name: String) -> PackedStringArray:
 
 
 static func has(name: String) -> bool:
-	return HALF.has(name) or ICONS.has(name)
+	return HALF.has(name) or ICONS.has(name) or SAME_AS.has(name)
 
 
 static func size_of(name: String) -> Vector2i:
@@ -1274,6 +1655,39 @@ static func draw(ci: CanvasItem, name: String, pos: Vector2, px: float, flip := 
 			ci.draw_rect(Rect2(pos + Vector2(dx, y) * px, Vector2(px, px)), color)
 
 
+## 第九版: 身上的东西画在哪: 回 [[图名, 左上角 (相对魔物图), 翻不翻], ...]。少年起才长出来 (学 m!x);
+## 翅膀在肩膀两边各一个, 尾巴在身子下半截的右边 (魔物翻过来就在左边)
+static func extra_parts(species: String, extra: String, flip := false) -> Array:
+	if extra == "" or not Species.DATA[species].stage in ["teen", "adult"]:
+		return []
+	var name := "extra_" + extra
+	if not ICONS.has(name):
+		return []
+	var s := size_of(name)
+	var r := rows(species)
+	if extra in ["wing", "batwing"]:
+		var y := clampi(int(Species.DATA[species].get("neck", 11)) + 1, 0, r.size() - 1)
+		var x := _edge(r[y], true) - s.x + 1
+		return [[name, Vector2(x, y - s.y + 2), false], [name, Vector2(16 - x - s.x, y - s.y + 2), true]]
+	var bottom := r.size() - 1
+	while bottom > 0 and r[bottom].replace(".", "") == "":
+		bottom -= 1
+	var ty := maxi(0, bottom - 2)
+	var pos := Vector2(_edge(r[ty], false) + 1, ty - s.y + 1)  # 贴着身子外面 (不然被身子、翅膀挡住)
+	if flip:
+		pos.x = 16 - pos.x - s.x
+	return [[name, pos, flip]]
+
+
+## 一行里最左 (left) / 最右边有颜色的点在第几格 (一整行都空就回中间)
+static func _edge(line: String, left: bool) -> int:
+	for i in line.length():
+		var x := i if left else line.length() - 1 - i
+		if line[x] != ".":
+			return x
+	return line.length() / 2
+
+
 ## 做成图片 (按钮上的图标、图鉴), 每个点放大 scale 倍
 static func image(name: String, scale: int, tint := Color.WHITE, shift := 0.0) -> Image:
 	var r := rows(name)
@@ -1283,29 +1697,37 @@ static func image(name: String, scale: int, tint := Color.WHITE, shift := 0.0) -
 	return img
 
 
-static func _paint(img: Image, name: String, at: Vector2i, scale: int, tint: Color, shift: float) -> void:
+static func _paint(img: Image, name: String, at: Vector2i, scale: int, tint: Color, shift: float, flip := false) -> void:
 	var r := rows(name)
 	for y in r.size():
-		for x in r[y].length():
+		var w := r[y].length()
+		for x in w:
 			var ch := r[y][x]
-			var cell := Rect2i((at.x + x) * scale, (at.y + y) * scale, scale, scale)
+			var dx := (w - 1 - x) if flip else x
+			var cell := Rect2i((at.x + dx) * scale, (at.y + y) * scale, scale, scale)
 			if ch != "." and Rect2i(Vector2i.ZERO, img.get_size()).encloses(cell):
 				img.fill_rect(cell, recolor(COLORS[ch], shift) * tint)
 
 
-## 第七版: 一只有遗传的魔物的图 (look = {species, hue, feature}): 换了颜色, 头上画遗传来的小特征
+## 第七版: 一只有遗传的魔物的图 (look = {species, hue, feature, extra}): 换了颜色, 头上画遗传来的小特征;
+## 第九版: 身上有东西 (少年起) 的话图左右各宽 5 格, 先画翅膀、尾巴, 再把魔物盖在上面
 static func look_texture(look: Dictionary, scale: int) -> ImageTexture:
 	var species: String = look.species
 	var hue: float = look.get("hue", -1.0)
 	var feature: String = look.get("feature", "")
-	var key := "look/%s/%.3f/%s/%d" % [species, hue, feature, scale]
+	var parts := extra_parts(species, str(look.get("extra", "")))
+	var key := "look/%s/%.3f/%s/%s/%d" % [species, hue, feature, look.get("extra", ""), scale]
 	if not _tex_cache.has(key):
-		var img := image(species, scale, Color.WHITE, shift_for(species, hue))
+		var pad := 5 if not parts.is_empty() else 0
+		var img := Image.create_empty((16 + pad * 2) * scale, 16 * scale, false, Image.FORMAT_RGBA8)
+		for part in parts:
+			_paint(img, part[0], Vector2i(part[1]) + Vector2i(pad, 0), scale, Color.WHITE, 0.0, part[2])
+		_paint(img, species, Vector2i(pad, 0), scale, Color.WHITE, shift_for(species, hue))
 		var d: Dictionary = Species.DATA[species]
 		if feature != "" and d.has("hat"):
 			var fname := "feature_" + feature
 			var fs := size_of(fname)
-			_paint(img, fname, Vector2i(floori((16 - fs.x) / 2.0), maxi(0, int(d.hat) - fs.y)), scale, Color.WHITE, 0.0)
+			_paint(img, fname, Vector2i(pad + floori((16 - fs.x) / 2.0), maxi(0, int(d.hat) - fs.y)), scale, Color.WHITE, 0.0)
 		_tex_cache[key] = ImageTexture.create_from_image(img)
 	return _tex_cache[key]
 

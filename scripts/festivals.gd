@@ -13,6 +13,10 @@ const LIST := {
 	"christmas": {"name": "圣诞节", "days": [[12, 24], [12, 25]], "deco": "snowman", "souvenir": "snowman"},
 }
 
+## 第九版: 节日嘉宾 (学 m!x 店里大机器每季换的特别对象): 过节那天, 媒人和约会广场会多带一位平时碰不到的混血魔物
+const GUESTS := {"newyear": "zhengqilong", "spring": "yanjiagui", "children": "moguwa", "midautumn": "yuyunjing",
+	"halloween": "feisha", "christmas": "feilu"}
+
 ## 农历节日的公历日期 [月, 日]
 const LUNAR := {
 	"spring": {2026: [2, 17], 2027: [2, 6], 2028: [1, 26], 2029: [2, 13], 2030: [2, 3],

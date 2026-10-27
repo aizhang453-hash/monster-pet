@@ -578,8 +578,12 @@ func test_matchmaker_marriage_and_next_generation() -> void:
 	check(main.dialog != null, "弹出媒人的弹窗")
 	has_text(main.dialog.get_child(0).get_child(0).get_child(0).text, "媒人")
 	var texts := _button_texts()
-	eq(texts.size(), Genes.OFFERS + 1, "三位对象 + 「现在还不想结婚」: %s" % [texts])
+	eq(texts.size(), Genes.OFFERS + 2, "三位对象 + 「找算命的看看」+「现在还不想结婚」: %s" % [texts])
 	has_text(texts[0], "头上")
+	_pick("找算命的看看")
+	has_text(main.dialog.get_child(0).get_child(0).get_child(0).text, "算命")
+	_pick("回去挑")
+	has_text(main.dialog.get_child(0).get_child(0).get_child(0).text, "媒人")
 	main.choose(0)
 	eq(main.game.pet.end_reason, "married")
 	check(main.dialog != null, "结婚的结局画面")
@@ -645,3 +649,75 @@ func test_tap_the_pest_away() -> void:
 	main.screen._gui_input(ev)
 	eq(main.game.pet.pest_at, 0, "点一下就赶跑了")
 	has_text(main.message.text, "赶跑")
+
+
+func test_fortune_house() -> void:
+	_start()
+	_later(6 * 60)
+	main.do_action("more")
+	_pick("算命屋")
+	has_text(main.dialog.get_child(0).get_child(0).get_child(1).text, "等你养大")
+	var p: Pet = main.game.pet
+	p.hatched_at = p.now
+	p._become("huolong")
+	main.game.places = ["grass", "lake"]
+	main.close_dialog()
+	_feed_up()
+	main.close_dialog()
+	main.do_action("more")
+	_pick("算命屋")
+	_pick("你家的")
+	check("海龙" in _button_texts(), "能挑打开了的地方的魔物: %s" % [_button_texts()])
+	check(not "火焰龙" in _button_texts(), "不跟自己同一种配")
+	_pick("海龙")
+	has_text(main.dialog.get_child(0).get_child(0).get_child(0).text, "算命")
+	var card: HBoxContainer = main.dialog.get_child(0).get_child(0).get_child(2)
+	has_text((card.get_child(card.get_child_count() - 1) as Label).text, "有缘")
+	_pick("再看看别的")
+	has_text(main.dialog.get_child(0).get_child(0).get_child(0).text, "算命屋")
+
+
+func test_date_plaza_and_friends() -> void:
+	_start()
+	_later(6 * 60)
+	var p: Pet = main.game.pet
+	p.hatched_at = p.now
+	p._become("huolong")
+	_feed_up()
+	main.close_dialog()
+	main.game.date_offers = [{"species": "hailong", "hue": 0.6, "feature": "fin", "extra": "wing"}]
+	main.do_action("out")
+	_pick("约会广场")
+	has_text(main.dialog.get_child(0).get_child(0).get_child(0).text, "约会广场")
+	_pick("找算命的看看")
+	_pick("回去挑")
+	_pick("海龙")
+	has_text(main.dialog.get_child(0).get_child(0).get_child(0).text, "顺利")
+	_pick("先做好朋友")
+	main.close_dialog()
+	main.do_action("more")
+	_pick("朋友")
+	check("送礼物" in _button_texts(), "朋友里有送礼物: %s" % [_button_texts()])
+	main.game.money = 500
+	main.game.buy("diamond_ring")
+	_pick("求婚")
+	eq(main.game.pet.end_reason, "married", "带钻石戒指求婚成功")
+	has_text(main.dialog.get_child(0).get_child(0).get_child(0).text, "结婚了")
+
+
+func test_friend_proposal_dialog() -> void:
+	_start()
+	_later(6 * 60)
+	var p: Pet = main.game.pet
+	p.hatched_at = p.now
+	p._become("huolong")
+	_feed_up()
+	main.close_dialog()
+	for i in Rules.FRIEND_MAX:
+		main.game.befriend("yunyang")
+	_later(60)
+	check(main.dialog != null, "弹出求婚的弹窗")
+	has_text(main.dialog.get_child(0).get_child(0).get_child(0).text, "求婚")
+	_pick("答应")
+	eq(main.game.pet.end_reason, "married")
+	eq(main.game.pet.partner.species, "yunyang")

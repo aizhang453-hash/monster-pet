@@ -100,7 +100,10 @@ func test_marry_leaves_an_egg_and_parents_move_out() -> void:
 func test_child_species_still_depends_on_care() -> void:
 	var g := _game()
 	_later(g, Rules.MATCH_AFTER + Rules.HOUR)
-	g.act("match", 0)
+	var plain := 0  # 挑一位普通的对象 (特别有缘的会生混血, 在 test_v9 里试)
+	while Species.hybrid_of([g.pet.species, g.pet.match_offers[plain].species]) != "":
+		plain += 1
+	g.act("match", plain)
 	var genes := g.next_egg.duplicate()
 	g.new_egg(Rules.EASY, g.pet.now, "grass", genes)
 	eq(g.pet.gen, 2, "第 2 代")

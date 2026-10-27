@@ -64,7 +64,7 @@ func _do(p: Pet, what: String) -> void:
 		"unhotel":
 			p.end_hotel("pickup")
 		"move":
-			p.place = Species.PLACE_ORDER[rng.randi() % 3]
+			p.set_place(Species.PLACE_ORDER[rng.randi() % 3])
 		"praise":
 			p.praise()
 		"pat":
@@ -153,7 +153,7 @@ func _check(p: Pet, last_now: int) -> void:
 		check(p.is_sleep_time(p.now), "%s 只在该睡的时候睡" % where)
 		check(p.call == "" or p.call == "lights", "%s 睡着时只会因为没关灯叫你" % where)
 	for e in p.events:
-		check(e.kind in ["grow", "call", "mistake", "poop", "sick", "sleep", "wake", "leave_ask", "end", "sit_start", "sit_end",
+		check(e.kind in ["grow", "morph", "call", "mistake", "poop", "sick", "sleep", "wake", "leave_ask", "end", "sit_start", "sit_end",
 				"hotel_start", "hotel_end", "match_ask", "walk_start", "walk_end", "pest", "pest_hit"],
 			"%s 事件 %s" % [where, e.kind])
 	p.events.clear()

@@ -32,6 +32,7 @@ var _msg_until := 0.0
 var _asked_leave := false
 var _asked_match := false
 var _asked_personality := false
+var _asked_proposal := false     # 第九版: 朋友来求婚的弹窗问过了
 var _shown_end := false
 
 
@@ -231,10 +232,14 @@ func _refresh() -> void:
 		_asked_leave = false
 	if not pet.wants_match:
 		_asked_match = false
+	if game.proposal == "":
+		_asked_proposal = false
 	if pet.is_over() and not _shown_end:
 		_show_ending()
 	elif pet.wants_match and not _asked_match:
 		_ask_match()
+	elif game.proposal != "" and not _asked_proposal:
+		_ask_proposal()
 	elif pet.wants_leave and not _asked_leave:
 		_ask_leave()
 	elif pet.personality == "" and pet.stage in ["child", "teen", "adult"] and not _asked_personality and not pet.away():
@@ -360,8 +365,17 @@ func _ask_out() -> void:
 			lines.append("%s: %s" % [o.name, o.help])
 		else:
 			lines.append("？？？: 还没解锁哦 (%s)" % o.unlock)
-	options.append(["算了", close_dialog])
-	_dialog("去哪儿玩?", "\n".join(lines), options)
+	options.append(["约会广场", _ask_date])  # 第九版 (放在最后, 不打乱以前的顺序)
+	lines.append("约会广场: 长大了来这里约会, 顺利的话就能求婚 (一天 %d 次)" % Rules.DATE_PER_DAY)
+	# 第九版: 地方多了, 一行一个会顶出屏幕, 改成两列的格子
+	var cells := []
+	for o in options:
+		cells.append([o[0], null, o[1], true])
+	dialog_buttons = []
+	var grid_box := _button_grid(cells)
+	var extra := dialog_buttons.duplicate()
+	_dialog("去哪儿玩?", "\n".join(lines), [["算了", close_dialog]], grid_box)
+	dialog_buttons = extra + dialog_buttons
 
 
 ## 第八版: 美食街挑一家店
@@ -534,13 +548,14 @@ func _ask_move() -> void:
 			var here: bool = game.pet.place == place
 			options.append([Species.PLACES[place].name + (" (现在住这里)" if here else ""), _move.bind(place)])
 	options.append(["算了", close_dialog])
-	_dialog("搬家", "小孩长成少年的时候住在哪儿, 就会长成那里的魔物哦。已经长大了的话, 搬家只是换换风景。", options)
+	_dialog("搬家", "小孩长成少年的时候住在哪儿, 就会长成那里的魔物哦。每个地方的小孩也长得不一样, 搬过去住一小时就会变样。已经长大了的话, 搬家只是换换风景。", options)
 
 
 func _move(place: String) -> void:
 	close_dialog()
 	var r := game.move(place)
-	_after({"ok": "搬到%s啦!" % Species.PLACES[place].name, "grown": "搬到%s啦! 换换风景~" % Species.PLACES[place].name}.get(r, ""))
+	_after({"ok": "搬到%s啦!" % Species.PLACES[place].name, "grown": "搬到%s啦! 换换风景~" % Species.PLACES[place].name,
+		"child": "搬到%s啦! 住上一小时, 它就会变成这里的小孩哦" % Species.PLACES[place].name}.get(r, ""))
 
 
 func _discipline(what: String) -> void:
@@ -841,6 +856,11 @@ func _show_ending() -> void:
 			["先看看", close_dialog]]
 		more = "\n\n这颗蛋长成哪一种, 还是看你照顾得好不好; 身上的颜色和头上的「%s」是从爸妈那儿遗传来的哦。" % \
 			Genes.FEATURES.get(game.next_egg.feature, "")
+		var pair: Array = game.next_egg.get("pair", [])
+		if Species.line_of(pair) != "":
+			more = "\n\n咦, 这颗蛋在闪闪发光! 孵出来的宝宝好像跟谁都不一样……"
+		elif Species.hybrid_of(pair) != "":
+			more += "\n爸妈特别有缘, 好好照顾它的话, 说不定会有惊喜哦~"
 	_dialog(head, "%s\n它活了 %d 岁, 已经记进图鉴啦。%s" % [Game.ending_text(pet.end_reason), pet.age(), more], options)
 
 
@@ -855,15 +875,233 @@ func _ask_match() -> void:
 	var cells := []
 	for i in game.pet.match_offers.size():
 		var o: Dictionary = game.pet.match_offers[i]
-		cells.append(["%s\n头上: %s" % [Species.name_of(o.species), Genes.FEATURES.get(o.feature, "")], Art.look_texture(o, 4),
-			_answer_match.bind(i), true])
+		cells.append([_look_line(o), Art.look_texture(o, 4), _answer_match.bind(i), true])
 	dialog_buttons = []
 	var grid_box := _button_grid(cells)
 	var extra := dialog_buttons.duplicate()
 	_dialog("媒人来了", "叮咚~ 媒人带着几位对象来看「%s」啦!\n挑一位结婚, 会生下一颗蛋, 两口子就搬去爸妈家住 (忙的时候能把孩子送过去)。" % game.pet.display_name() +
-		"孩子长成哪一种还是看你照顾, 颜色和头上的小特征从爸妈那儿遗传。\n还不想结婚也没关系, 媒人过一天再来。",
-		[["现在还不想结婚", _answer_match.bind(-1)]], grid_box)
+		"孩子长成哪一种还是看你照顾, 颜色、头上和身上的小东西从爸妈那儿遗传。\n拿不定主意? 先找算命的看看宝宝长什么样~",
+		[["找算命的看看", _ask_fortune], ["现在还不想结婚", _answer_match.bind(-1)]], grid_box)
 	dialog_buttons = extra + dialog_buttons
+
+
+## 一位对象写在按钮上的字: 名字、头上、身上 (第九版: 节日嘉宾、交情)
+func _look_line(o: Dictionary) -> String:
+	var line := ("节日嘉宾 " if o.get("guest", false) else "") + Species.name_of(o.species)
+	line += "\n头上: " + Genes.FEATURES.get(o.get("feature", ""), "")
+	if Genes.EXTRAS.has(o.get("extra", "")):
+		line += "\n身上: " + Genes.EXTRAS[o.extra]
+	if game.friends.has(o.species):
+		line += "\n" + game.hearts_text(o.species)
+	return line
+
+
+## 第九版: 算命的 (学 m!x 的算命): 看看跟每一位生的宝宝大概长什么样, 特别有缘的会说出来
+func _ask_fortune() -> void:
+	_show_fortune_list(game.pet.match_offers, _ask_match)
+
+
+func _show_fortune_list(offers: Array, back: Callable) -> void:
+	var rows := VBoxContainer.new()
+	rows.add_theme_constant_override("separation", 14)
+	var me := Genes.look_of(game.pet)
+	for o in offers:
+		rows.add_child(_fortune_card(me, o))
+	_dialog("算命的说……", "我看看哦~ 跟这几位生的宝宝, 大概是这样的:", [["回去挑", back]], rows)
+
+
+## 第九版: 约会广场 (学 Paradise 自己去求婚、Uni 约会、V5 相亲节目): 从住的地方来几位, 挑一位约会
+func _ask_date() -> void:
+	var r := game.can_date()
+	if r != "ok":
+		close_dialog()
+		_say(Game.date_no(r))
+		return
+	var offers := game.date_list()
+	var cells := []
+	for i in offers.size():
+		cells.append([_look_line(offers[i]), Art.look_texture(offers[i], 4), _go_date.bind(i), true])
+	dialog_buttons = []
+	var grid_box := _button_grid(cells)
+	var extra := dialog_buttons.duplicate()
+	_dialog("约会广场", "今天还能约 %d 次。挑一位约会吧~\n顺不顺利看它饿不饿、开不开心, 交情越深越顺利; 特别有缘的一定顺利哦。想认识别的地方的魔物, 就搬过去住吧" %
+		game.dates_left(), [["找算命的看看", _show_fortune_list.bind(offers, _ask_date)], ["回家", close_dialog]], grid_box)
+	dialog_buttons = extra + dialog_buttons
+
+
+func _go_date(i: int) -> void:
+	var res := game.go_date(i)
+	if not res.ok:
+		close_dialog()
+		_after(res.text)
+		return
+	var pic := TextureRect.new()
+	pic.texture = Art.look_texture(game.date_ok, 5)
+	pic.stretch_mode = TextureRect.STRETCH_KEEP_CENTERED
+	_dialog("约会好顺利!", res.text + "\n要现在求婚吗? (约会顺利了不用戒指哦)", [["求婚!", _answer_date.bind(true)], ["先做好朋友", _answer_date.bind(false)]], pic)
+
+
+func _answer_date(yes: bool) -> void:
+	close_dialog()
+	_after(game.act("date_propose", yes))
+
+
+## 第九版: 朋友 (学 m!x、On 去城镇交朋友): 交情、送礼物、带戒指求婚
+func _show_friends() -> void:
+	if game.friends.is_empty():
+		_dialog("朋友", "还没有朋友呢。去公园逛逛、去约会广场约会, 它散步的时候也会交朋友哦~", [["好的", close_dialog]])
+		return
+	var list := VBoxContainer.new()
+	list.add_theme_constant_override("separation", 10)
+	var buttons_here := []
+	for sp in game.friends:
+		var f: Dictionary = game.friends[sp]
+		var row := HBoxContainer.new()
+		row.add_theme_constant_override("separation", 8)
+		var pic := TextureRect.new()
+		pic.texture = Art.look_texture(f.look, 3)
+		pic.stretch_mode = TextureRect.STRETCH_KEEP_CENTERED
+		pic.custom_minimum_size = Vector2(80, 60)
+		row.add_child(pic)
+		var name_label := Label.new()
+		name_label.text = "%s\n%s" % [Species.name_of(sp), game.hearts_text(sp)]
+		name_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		name_label.add_theme_font_size_override("font_size", 24)
+		row.add_child(name_label)
+		for b in [["送礼物", _gift.bind(sp)], ["求婚", _propose.bind(sp)]]:
+			var btn := Button.new()
+			btn.text = b[0]
+			btn.custom_minimum_size = Vector2(120, 64)
+			btn.add_theme_font_size_override("font_size", 24)
+			btn.pressed.connect(b[1])
+			row.add_child(btn)
+			buttons_here.append(btn)
+		list.add_child(row)
+	var box: Control = list
+	if game.friends.size() > 6:
+		var scroll := ScrollContainer.new()
+		scroll.custom_minimum_size = Vector2(600, 600)
+		scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+		scroll.add_child(list)
+		box = scroll
+	_dialog("朋友", "魔晶 %d · 戒指 %d · 钻石戒指 %d\n送礼物 %d 魔晶, 交情 +1 (每位一天一次)。交情满 %d 颗心, 它会来求婚哦; 带戒指去求婚也行" %
+		[game.money, int(game.items.get("ring", 0)), int(game.items.get("diamond_ring", 0)), Rules.GIFT_PRICE, Rules.FRIEND_MAX],
+		[["关闭", close_dialog]], box)
+	dialog_buttons = buttons_here + dialog_buttons
+
+
+func _gift(sp: String) -> void:
+	var text := game.act("gift", sp)
+	_save()
+	_show_friends()
+	_say(text)
+
+
+func _propose(sp: String) -> void:
+	var text := game.act("propose", sp)
+	close_dialog()
+	_after(text)
+
+
+## 第九版: 交情满了的朋友来求婚
+func _ask_proposal() -> void:
+	_asked_proposal = true
+	var pic := TextureRect.new()
+	pic.texture = Art.look_texture(game.friends[game.proposal].look, 5)
+	pic.stretch_mode = TextureRect.STRETCH_KEEP_CENTERED
+	_dialog("有人来求婚啦!", "叮咚~ 好朋友「%s」带着戒指来求婚啦! 要答应吗?\n答应了就结婚, 生下一颗蛋, 两口子搬去爸妈家住。" % Species.name_of(game.proposal),
+		[["答应!", _answer_proposal.bind(true)], ["下次再说", _answer_proposal.bind(false)]], pic)
+
+
+func _answer_proposal(yes: bool) -> void:
+	close_dialog()
+	_after(game.act("proposal", yes))
+
+
+## 一位对象 → 宝宝大概的样子 (颜色、头上、身上), 特别有缘的再画一个黑影 (图鉴里有了就画出来)
+func _fortune_card(a: Dictionary, b: Dictionary) -> Control:
+	var pv := Genes.preview(a, b)
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 10)
+	var pics := [Art.look_texture(b, 4)]
+	var baby: String = Species.LINES[pv.line].baby if pv.line != "" else "tuanzi"
+	var dark := Color(0.15, 0.13, 0.2)
+	if pv.line != "":
+		pics.append(Art.texture(baby, 4, Color.WHITE if game.dex.has(baby) else dark))
+	else:
+		pics.append(Art.look_texture({"species": baby, "hue": pv.hue, "feature": pv.features[0]}, 4))
+	if pv.hybrid != "":
+		pics.append(Art.texture(pv.hybrid, 3, Color.WHITE if game.dex.has(pv.hybrid) else dark))
+	for i in pics.size():
+		if i == 1:
+			var arrow := Label.new()
+			arrow.text = "→"
+			arrow.add_theme_font_size_override("font_size", 30)
+			row.add_child(arrow)
+		var pic := TextureRect.new()
+		pic.texture = pics[i]
+		pic.stretch_mode = TextureRect.STRETCH_KEEP_CENTERED
+		row.add_child(pic)
+	var text := Label.new()
+	text.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	text.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	text.custom_minimum_size = Vector2(240, 0)
+	text.add_theme_font_size_override("font_size", 22)
+	text.text = Genes.fortune_text(pv, game.dex)
+	row.add_child(text)
+	return row
+
+
+## 第九版: 算命屋 (配对模拟器, 学 My Lab 的配对模拟): 挑两位看看它们的宝宝。先挑一位: 你家的这只 (成年了的话) 或者图鉴里养大过的
+func _show_fortune_house() -> void:
+	var cells := []
+	if game.pet != null and not game.pet.is_over() and game.pet.stage == "adult":
+		var me := Genes.look_of(game.pet)
+		cells.append(["你家的\n%s" % game.pet.display_name(), Art.look_texture(me, 3), _fortune_pick_b.bind(me), true])
+	for id in Species.ORDER:
+		if game.dex.has(id) and Species.DATA[id].stage == "adult":
+			cells.append([Species.name_of(id), Art.texture(id, 3), _fortune_pick_b.bind({"species": id}), true])
+	if cells.is_empty():
+		_dialog("算命屋", "算命的: 欢迎欢迎~ 等你养大一只成年的魔物, 再来看看它跟谁的宝宝最可爱吧!", [["好的", close_dialog]])
+		return
+	dialog_buttons = []
+	var box := _scroll_if_long(_button_grid(cells, 3), cells.size())
+	var extra := dialog_buttons.duplicate()
+	_dialog("算命屋", "算命的: 想看看哪两位的宝宝? 先挑一位吧~", [["关闭", close_dialog]], box)
+	dialog_buttons = extra + dialog_buttons
+
+
+## 算命屋: 再挑另一位 (打开了的地方的成年魔物, 跟媒人会介绍的一样)
+func _fortune_pick_b(a: Dictionary) -> void:
+	var cells := []
+	for place in Species.PLACE_ORDER:
+		if not place in game.places:
+			continue
+		for k in ["best", "good", "mid", "low", "bad1", "bad2"]:
+			var sp: String = Species.PLACES[place][k]
+			if sp != a.species:
+				cells.append([Species.name_of(sp), Art.texture(sp, 3), _fortune_show.bind(a, {"species": sp}), true])
+	dialog_buttons = []
+	var box := _scroll_if_long(_button_grid(cells, 3), cells.size())
+	var extra := dialog_buttons.duplicate()
+	_dialog("算命屋", "跟「%s」配一配, 再挑一位~" % Species.name_of(a.species), [["换一位", _show_fortune_house]], box)
+	dialog_buttons = extra + dialog_buttons
+
+
+func _fortune_show(a: Dictionary, b: Dictionary) -> void:
+	_dialog("算命的说……", "「%s」和「%s」的宝宝:" % [Species.name_of(a.species), Species.name_of(b.species)],
+		[["再看看别的", _show_fortune_house], ["关闭", close_dialog]], _fortune_card(a, b))
+
+
+## 格子太多就放进能上下滑的框里
+func _scroll_if_long(c: Control, count: int) -> Control:
+	if count <= 9:
+		return c
+	var scroll := ScrollContainer.new()
+	scroll.custom_minimum_size = Vector2(600, 640)
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	scroll.add_child(c)
+	return scroll
 
 
 func _answer_match(i: int) -> void:
@@ -890,7 +1128,7 @@ func _answer_leave(let_go: bool) -> void:
 func _show_menu() -> void:
 	var mail := "信箱" + (" (%d 封新信)" % game.unread() if game.unread() > 0 else "")
 	var options := [["商店", _show_shop], ["装扮", _show_dress], ["图鉴", _show_dex], ["纪念品", _show_souvenirs], [mail, _show_mail],
-		["怎么玩", _show_help]]
+		["朋友", _show_friends], ["算命屋", _show_fortune_house], ["怎么玩", _show_help]]
 	if game.places.size() > 1 and game.pet != null and not game.pet.is_over():
 		options.insert(2, ["搬家", _ask_move])
 	if game.pet != null and game.pet.is_over():
@@ -923,7 +1161,7 @@ func _button_grid(items: Array, columns := 2) -> GridContainer:
 		b.text = it[0]
 		if it[1] != null:
 			b.icon = it[1]
-		b.custom_minimum_size = Vector2(290, 96) if columns == 2 else Vector2(188, 84)
+		b.custom_minimum_size = Vector2(290, 96 if it[1] != null else 72) if columns == 2 else Vector2(188, 84)  # 没图的矮一点
 		b.add_theme_font_size_override("font_size", 24 if columns == 2 else 26)
 		b.alignment = HORIZONTAL_ALIGNMENT_LEFT if columns == 2 else HORIZONTAL_ALIGNMENT_CENTER
 		b.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART  # 字太长就换行, 不把弹窗撑出屏幕
@@ -965,6 +1203,9 @@ func _show_shop_page(category: String) -> void:
 		var can := true
 		if d.kind == "food":
 			line += "\n%s (有 %d)" % [Items.food_text(id), int(game.items.get(id, 0))]
+			can = int(game.items.get(id, 0)) < Items.MAX_STACK
+		elif d.kind == "ring":
+			line += "\n%s (有 %d)" % ["对方一定答应" if id == "diamond_ring" else "交情够了才答应", int(game.items.get(id, 0))]
 			can = int(game.items.get(id, 0)) < Items.MAX_STACK
 		elif id in game.owned:
 			line += "\n已经有了"
@@ -1024,10 +1265,14 @@ func _show_dex() -> void:
 	var list := VBoxContainer.new()
 	list.add_theme_constant_override("separation", 8)
 	var found := 0
-	var groups := [["宝宝和小孩", ["tuanzi", "jianjiao"], ""]]
+	var groups := [["宝宝和小孩", ["tuanzi", "jianjiao", "shuizhu", "rongqiu"], ""]]
 	for place in Species.PLACE_ORDER:
 		var d: Dictionary = Species.PLACES[place]
 		groups.append([d.name, [d.teen_good, d.teen_bad, d.best, d.good, d.mid, d.low, d.bad1, d.bad2, d.secret], place])
+	groups.append(["混血", Species.HYBRIDS.keys(), ""])  # 第九版
+	for line in Species.LINE_ORDER:
+		var l: Dictionary = Species.LINES[line]
+		groups.append([l.name + " (大奖)", [l.baby, l.teen, l.good, l.mid, l.bad], ""])
 	for grp in groups:
 		var head := Label.new()
 		head.text = grp[0] + ("" if grp[2] == "" or grp[2] in game.places else " (还没去过)")
@@ -1055,7 +1300,8 @@ func _show_dex() -> void:
 			if seen:
 				name_label.text = "%s ×%d" % [Species.name_of(id), game.dex[id]]
 			else:
-				name_label.text = "？？？" + (" (隐藏)" if Species.DATA[id].get("secret", false) else "")
+				name_label.text = "？？？" + (" (隐藏)" if Species.DATA[id].get("secret", false) else "") + \
+					(" (混血)" if Species.DATA[id].get("hybrid", false) else "")
 				name_label.add_theme_color_override("font_color", Look.TEXT_DIM)
 			cell.add_child(name_label)
 			g.add_child(cell)
@@ -1068,7 +1314,7 @@ func _show_dex() -> void:
 	for i in Training.RANK_NAMES.size():
 		if int(game.trophies.get(i, 0)) > 0:
 			cups.append("%s ×%d" % [Training.RANK_NAMES[i], game.trophies[i]])
-	_dialog("图鉴 %d/%d" % [found, Species.ORDER.size()], "一共养过 %d 只啦。隐藏的魔物只有「原版严格」养得出来哦。\n奖杯: %s" %
+	_dialog("图鉴 %d/%d" % [found, Species.ORDER.size()], "一共养过 %d 只啦。隐藏的魔物只有「原版严格」养得出来哦。混血要特别有缘的爸妈, 去「更多 → 算命屋」问问看~\n奖杯: %s" %
 		[game.history.size(), "、".join(cups) if not cups.is_empty() else "还没有"], [["关闭", close_dialog]], scroll)
 
 
@@ -1122,7 +1368,9 @@ func _show_help() -> void:
 		"用手指点点它, 就是摸摸它~\n\n" +
 		"出门: 公园、美食街、学校、上班、旅馆…… 有的地方要先解锁\n" +
 		"托人照看: 上学、上班的时候托给别人, 每天最多 %s\n" % Game.sitter_text(Rules.SITTER_PER_DAY) +
-		"更多: 商店、装扮、图鉴、纪念品、信箱\n\n" +
+		"更多: 商店、装扮、图鉴、纪念品、信箱、朋友、算命屋\n\n" +
 		"它有时会自己溜出去散步; 有捣蛋精来捣乱的话, 在屏幕上点它一下就跑啦。过节那天打开游戏有礼物哦!\n" +
-		"长大以后, 媒人会上门介绍对象, 结婚会生下一颗蛋。它也可能想出去闯荡, 放不放它走由你决定。",
+		"长大以后, 媒人会上门介绍对象, 结婚会生下一颗蛋。它也可能想出去闯荡, 放不放它走由你决定。\n" +
+		"有的两位特别有缘, 生的宝宝照顾得好会长成没见过的混血魔物; 想知道谁跟谁有缘, 问问算命的吧!\n" +
+		"不想等媒人的话: 去「约会广场」约会, 顺利就能求婚; 也可以跟朋友慢慢变熟, 带戒指去求婚, 交情满了它还会来求婚。过节那天还有节日嘉宾哦",
 		[["知道了", close_dialog]])

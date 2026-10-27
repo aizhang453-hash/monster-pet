@@ -43,7 +43,7 @@ func test_every_adult_is_reachable() -> void:
 						reached[_form(id, m, d, life)] = true
 						easy[_form(id, m, d, life, Rules.EASY)] = true
 	for id in Species.ORDER:
-		if Species.DATA[id].stage == "adult":
+		if Species.DATA[id].stage == "adult" and Species.place_of(id) != "":  # 混血和大奖那两族在 test_v9 里试
 			var secret: bool = Species.DATA[id].get("secret", false)
 			check(reached.has(id), "%s 能养出来" % id)
 			check(easy.has(id) != secret, "放宽: %s %s" % [id, "养不出来" if secret else "能养出来"])

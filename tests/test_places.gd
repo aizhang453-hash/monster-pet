@@ -10,7 +10,7 @@ func test_every_place_has_a_full_set() -> void:
 	var all := {}
 	for place in Species.PLACES:
 		var d: Dictionary = Species.PLACES[place]
-		for k in ["teen_good", "teen_bad", "secret", "best", "good", "mid", "low", "bad1", "bad2"]:
+		for k in ["child", "teen_good", "teen_bad", "secret", "best", "good", "mid", "low", "bad1", "bad2"]:
 			var id: String = d[k]
 			check(Species.DATA.has(id), "%s 的 %s 是一个种类" % [place, k])
 			check(Art.HALF.has(id), "%s 画了" % id)
@@ -18,7 +18,8 @@ func test_every_place_has_a_full_set() -> void:
 			all[id] = true
 			eq(Species.place_of(id), place)
 		check(Species.DATA[d.secret].get("secret", false), "%s 的隐藏种类标了隐藏" % place)
-	eq(Species.ORDER.size(), 2 + 9 * Species.PLACES.size(), "图鉴: 宝宝、小孩 + 每个地方 9 种")
+	eq(Species.ORDER.size(), 1 + 10 * Species.PLACES.size() + Species.HYBRIDS.size() + 5 * Species.LINES.size(),
+		"图鉴: 宝宝 + 每个地方 10 种 (第九版多了那里的小孩) + 混血 + 大奖每一族 5 种 (小孩跟宝宝一个样子, 不另算)")
 	for id in Species.ORDER:
 		check(Species.DATA.has(id))
 

@@ -35,6 +35,13 @@ var souvenirs := {}         # 纪念品: 代号 -> 有几个
 # 第七版: 结婚和下一代
 var parents := {}           # 爸妈家住着谁: {a: 你养的那只的样子, b: 结婚的对象, gen: 它们是第几代}
 var next_egg := {}          # 留下的蛋 (结婚生的、老死留下的): {gen, hue, feature}; 空 = 没有
+# 第九版: 别的结婚办法 (用户 2026-10-26 说拓麻歌子的结婚办法「都做上」)
+var friends := {}           # 朋友 (跟着主人): 种类 -> {look 样子, hearts 交情 0–5, gift_day 哪天送过礼物, asked_day 哪天来求过婚}
+var proposal := ""          # 哪位朋友来求婚了, 等你答应 (空 = 没有)
+var date_offers: Array = [] # 约会广场等着的几位 (约过一次就换一批)
+var date_day := -1          # 哪天 (本地的第几天) 约会过
+var dates_today := 0        # 那天约了几次
+var date_ok := {}           # 刚约会成功的那位, 等你决定求不求婚
 var rng := RandomNumberGenerator.new()
 
 
@@ -62,8 +69,15 @@ func new_egg(diff: String, t := -1, place := "grass", genes := {}) -> void:
 	pet.gen = int(genes.get("gen", 1))
 	pet.hue = float(genes.get("hue", -1.0))
 	pet.feature = str(genes.get("feature", ""))
+	pet.extra = str(genes.get("extra", ""))
+	pet.pair = Array(genes.get("pair", [])).duplicate()
 	next_egg = {}
-	if pet.gen > 1:
+	date_offers = []
+	date_ok = {}
+	proposal = ""
+	if Species.line_of(pet.pair) != "":
+		messages.append({"text": "第 %d 代的蛋…… 咦, 它在闪闪发光! 好像跟别的蛋不一样呢" % pet.gen, "rank": 4})
+	elif pet.gen > 1:
 		messages.append({"text": "第 %d 代的蛋! 等一会儿就会孵出来。" % pet.gen, "rank": 4})
 	else:
 		messages.append({"text": "一颗魔物蛋出现了! 等一会儿就会孵出来。", "rank": 4})
@@ -79,6 +93,7 @@ func tick(t := -1) -> void:
 	_take_events()
 	_deliver_letters()
 	_celebrate(clock() if t < 0 else t)
+	_friend_proposal()
 
 
 func _take_events() -> void:
@@ -89,8 +104,10 @@ func _take_events() -> void:
 				if Species.DATA[e.id].stage == "adult":
 					_unlock_places()
 					_job_letter()
+			"morph":
+				dex[e.id] = int(dex.get(e.id, 0)) + 1  # 第九版: 搬家变成的小孩也记进图鉴
 			"match_ask":
-				pet.match_offers = Genes.offers(places, pet.species, rng)
+				pet.match_offers = Genes.add_guest(Genes.offers(places, pet.species, rng), Festivals.GUESTS.get(festival(), ""), pet.species, rng)
 			"walk_end":
 				e.text = _walk_gift() if e.get("done", false) else ""
 			"end":
@@ -117,16 +134,23 @@ func _take_events() -> void:
 
 
 ## 同时发生好几件事, 画面只显示最要紧的一条
-const RANK := {"end": 5, "grow": 4, "leave_ask": 4, "match_ask": 4, "pest": 3, "pest_hit": 3, "walk_start": 2, "walk_end": 2, "sit_end": 3, "hotel_end": 3, "sick": 3, "mistake": 3, "call": 2,
+const RANK := {"end": 5, "grow": 4, "morph": 4, "leave_ask": 4, "match_ask": 4, "pest": 3, "pest_hit": 3, "walk_start": 2, "walk_end": 2, "sit_end": 3, "hotel_end": 3, "sick": 3, "mistake": 3, "call": 2,
 	"poop": 1, "sleep": 1, "wake": 1, "sit_start": 1, "hotel_start": 1}
 
 
 func describe(e: Dictionary) -> String:
 	match e.kind:
 		"grow":
+			var d: Dictionary = Species.DATA[e.id]
+			if e.from == "egg" and d.has("line"):
+				return "哇! 孵出来的是没见过的「%s」! 是%s的宝宝哦, 它肚子咕咕叫, 快喂它~" % [Species.name_of(e.id), Species.LINES[d.line].name]
 			if e.from == "egg":
 				return "孵出来啦! 是「%s」! 它肚子咕咕叫, 快喂它~" % Species.name_of(e.id)
+			if d.get("hybrid", false):
+				return "哇哇! 长成了从没见过的「%s」! 爸妈特别有缘, 又被你照顾得好好的, 才会长成这样哦" % Species.name_of(e.id)
 			return "长大啦! 变成了「%s」" % Species.name_of(e.id)
+		"morph":
+			return "在%s住了一阵子, 它变成了「%s」的样子!" % [Species.PLACES[game_place()].name, Species.name_of(e.id)]
 		"call":
 			return {"hunger": "它饿得咕噜咕噜叫, 喂它吃饭吧", "happy": "它闷闷不乐的, 陪它玩一玩、给点零食吧",
 				"lights": "它睡着了, 帮它关个灯吧", "discipline": "它在耍小脾气! 该管教一下了",
@@ -306,6 +330,44 @@ func act(what: String, arg: Variant = null) -> String:
 			pet.answer_match(int(arg))
 			r = "married" if pet.end_reason == "married" else "later"
 			text = "" if r == "married" else "现在还不想结婚。媒人说: 那我过一天再来~"
+		"gift":
+			# 第九版: 给朋友送礼物 (arg = 种类)
+			r = _gift(str(arg))
+			var who := Species.name_of(str(arg)) if Species.DATA.has(str(arg)) else ""
+			text = {"no": "还不认识它呢", "again": "今天已经给「%s」送过礼物啦, 明天再送吧" % who,
+				"poor": "魔晶不够啦 (送礼物要 %d)" % Rules.GIFT_PRICE,
+				"ok": "送了「%s」一份小礼物, 它好开心! (%s)" % [who, hearts_text(str(arg))]}.get(r, "")
+		"propose":
+			# 第九版: 带戒指向朋友求婚 (arg = 种类)
+			r = _propose(str(arg))
+			var who := Species.name_of(str(arg)) if Species.DATA.has(str(arg)) else ""
+			text = {"no": "还不认识它呢", "young": "长大了才能求婚哦", "same": "跟自己同一种的不能结婚哦", "busy": "它现在不在家或者在睡觉, 等等吧",
+				"noring": "先去买个戒指吧 (更多 → 商店 → 戒指)",
+				"refused": "「%s」红着脸说: 我们再多认识认识吧~ (交情要 %d 颗心, 戒指先收好; 钻石戒指的话一定答应哦)" % [who, Rules.RING_HEARTS]}.get(r, "")
+		"proposal":
+			# 第九版: 朋友来求婚, 答不答应 (arg = true 答应)
+			var who := proposal
+			proposal = ""
+			if who == "" or not friends.has(who):
+				r = "no"
+			elif bool(arg):
+				r = "married" if _marry(friends[who].look) else "busy"
+				text = "" if r == "married" else "它现在不在家或者在睡觉, 结不了婚, 下次吧"
+			else:
+				r = "later"
+				text = "「%s」说: 那我下次再来问~" % Species.name_of(who)
+		"date_propose":
+			# 第九版: 约会顺利以后, 求不求婚 (arg = true 求婚)
+			var look := date_ok
+			date_ok = {}
+			if look.is_empty():
+				r = "no"
+			elif bool(arg):
+				r = "married" if _marry(look) else "busy"
+				text = "" if r == "married" else "它现在不在家或者在睡觉, 下次吧"
+			else:
+				r = "friends"
+				text = "先做好朋友吧! 「%s」记在朋友里啦" % Species.name_of(look.species)
 		"leave":
 			pet.answer_leave(bool(arg))
 			r = "ok"
@@ -341,7 +403,9 @@ func _unlock_places() -> void:
 func move(place: String) -> String:
 	if pet == null or pet.is_over() or not place in places:
 		return "no"
-	pet.place = place
+	pet.set_place(place, maxi(pet.now, clock()))
+	if pet.morph_at > 0:
+		return "child"  # 第九版: 小孩过一会儿会变成这里的小孩
 	return "ok" if pet.stage in ["egg", "baby", "child"] else "grown"
 
 
@@ -367,7 +431,177 @@ func _walk_gift() -> String:
 		return "它散步回来啦, 还捡了一个苹果!"
 	pet.happy = mini(4, pet.happy + 1)
 	last_gift = "heart"
-	return "它散步回来啦, 说在路上交了个新朋友, 开心 +1"
+	var adults := _adults_around()
+	if adults.is_empty():
+		return "它散步回来啦, 说在路上交了个新朋友, 开心 +1"
+	var sp: String = adults[rng.randi() % adults.size()]
+	return "它散步回来啦, 说在路上交了个新朋友「%s」, 开心 +1 (%s)" % [Species.name_of(sp), befriend(sp)]
+
+
+# ---------------------------------------------------------------- 第九版: 别的结婚办法
+
+func game_place() -> String:
+	return pet.place if pet != null and Species.PLACES.has(pet.place) else "grass"
+
+
+## 本地的今天是第几天
+func _today() -> int:
+	return floori(float(clock() + tz) / Rules.DAY)
+
+
+## 打开了的地方的成年魔物 (不算隐藏的、不算自己这一种)
+func _adults_around() -> Array:
+	var out := []
+	for place in places:
+		for k in ["best", "good", "mid", "low", "bad1", "bad2"]:
+			var sp: String = Species.PLACES[place][k]
+			if pet == null or sp != pet.species:
+				out.append(sp)
+	return out
+
+
+## 交朋友: 碰到一次、约会一次、送一次礼物, 交情 +1 (最多 FRIEND_MAX 颗心); 只交成年的。回「交情 3/5」这样的话 (没交上回空)
+func befriend(sp: String, look := {}) -> String:
+	if not Species.DATA.has(sp) or Species.DATA[sp].stage != "adult":
+		return ""
+	if not friends.has(sp):
+		var l: Dictionary = (look if not look.is_empty() else Genes.random_look(sp, rng)).duplicate()
+		l.erase("guest")
+		friends[sp] = {"look": l, "hearts": 0, "gift_day": -1, "asked_day": -1}
+	friends[sp].hearts = mini(Rules.FRIEND_MAX, int(friends[sp].hearts) + 1)
+	return hearts_text(sp)
+
+
+func hearts_text(sp: String) -> String:
+	return "交情 %d/%d" % [int(friends[sp].hearts), Rules.FRIEND_MAX] if friends.has(sp) else ""
+
+
+func _gift(sp: String) -> String:
+	if not friends.has(sp):
+		return "no"
+	if int(friends[sp].gift_day) == _today():
+		return "again"
+	if money < Rules.GIFT_PRICE:
+		return "poor"
+	money -= Rules.GIFT_PRICE
+	friends[sp].gift_day = _today()
+	befriend(sp)
+	return "ok"
+
+
+## 带戒指求婚: 普通戒指要交情够 (不够就被婉拒, 戒指留着), 钻石戒指一定答应。有普通戒指又够交情的话先用普通的
+func _propose(sp: String) -> String:
+	if not friends.has(sp):
+		return "no"
+	if pet.stage != "adult" or not pet.partner.is_empty() or pet.is_over():
+		return "young"
+	if sp == pet.species:
+		return "same"
+	if pet.asleep or pet.away():
+		return "busy"
+	var ring := ""
+	if int(items.get("ring", 0)) > 0 and int(friends[sp].hearts) >= Rules.RING_HEARTS:
+		ring = "ring"
+	elif int(items.get("diamond_ring", 0)) > 0:
+		ring = "diamond_ring"
+	elif int(items.get("ring", 0)) > 0:
+		return "refused"
+	else:
+		return "noring"
+	items[ring] = int(items[ring]) - 1
+	if items[ring] <= 0:
+		items.erase(ring)
+	return "married" if _marry(friends[sp].look) else "busy"
+
+
+## 结婚 (约会广场、朋友求婚、带戒指求婚都走这里); 娶走的朋友就不在朋友里了 (搬去爸妈家了)
+func _marry(look: Dictionary) -> bool:
+	if not pet.marry(look):
+		return false
+	friends.erase(look.species)
+	proposal = ""
+	date_ok = {}
+	return true
+
+
+## 交情满了的朋友会来求婚 (学 m!x、On: 交情最高的时候对方来求婚); 一位一天最多来一次
+func _friend_proposal() -> void:
+	if proposal != "" or pet == null or pet.is_over() or pet.stage != "adult" or not pet.partner.is_empty() \
+			or pet.asleep or pet.away() or pet.wants_match:
+		return
+	for sp in friends:
+		var f: Dictionary = friends[sp]
+		if int(f.hearts) >= Rules.FRIEND_MAX and int(f.asked_day) != _today() and sp != pet.species:
+			proposal = sp
+			f.asked_day = _today()
+			messages.append({"text": "叮咚~ 好朋友「%s」带着戒指来求婚啦!" % Species.name_of(sp), "rank": 4})
+			return
+
+
+## 约会广场 (学 Paradise 自己去求婚、Uni 约会、V5 相亲节目、Plus Color 约会场所): 能不能去
+func can_date() -> String:
+	var r := can_go_out()
+	if r != "ok":
+		return r
+	if pet.stage != "adult" or not pet.partner.is_empty():
+		return "young"
+	if date_day == _today() and dates_today >= Rules.DATE_PER_DAY:
+		return "used_up"
+	return "ok"
+
+
+func dates_left() -> int:
+	return Rules.DATE_PER_DAY - (dates_today if date_day == _today() else 0)
+
+
+## 约会广场等着的几位: 从现在住的地方来 (朋友就是朋友的样子); 过节那天多一位节日嘉宾
+func date_list() -> Array:
+	if date_offers.is_empty() and pet != null:
+		date_offers = Genes.date_offers(pet.place, pet.species, rng)
+		for i in date_offers.size():
+			if friends.has(date_offers[i].species):
+				date_offers[i] = friends[date_offers[i].species].look.duplicate()
+		date_offers = Genes.add_guest(date_offers, Festivals.GUESTS.get(festival(), ""), pet.species, rng)
+	return date_offers
+
+
+## 跟第 i 位约会: 回 {ok 顺不顺利, text}。约一次就交上朋友 (交情 +1); 饿着或不开心约不成;
+## 顺利的机会看饿和开心 (都满 9 成, 都 2 颗心一半), 交情越深越顺利, 特别有缘的一定顺利
+func go_date(i: int) -> Dictionary:
+	tick()
+	var r := can_date()
+	if r != "ok":
+		return {"ok": false, "text": date_no(r)}
+	var offers := date_list()
+	if i < 0 or i >= offers.size():
+		return {"ok": false, "text": ""}
+	var look: Dictionary = offers[i]
+	if date_day != _today():
+		date_day = _today()
+		dates_today = 0
+	dates_today += 1
+	date_offers = []
+	var who := Species.name_of(look.species)
+	var hearts := befriend(look.species, look)
+	last_result = "date"
+	if pet.hunger < 2 or pet.happy < 2:
+		return {"ok": false, "text": "它%s, 约会的时候一直没精神…… 「%s」说下次再约吧 (%s)" %
+			["肚子饿得咕咕叫" if pet.hunger < 2 else "闷闷不乐的", who, hearts]}
+	var chance := 0.5 + 0.1 * (pet.hunger + pet.happy - 4) + 0.05 * int(friends[look.species].hearts)
+	var pair := [pet.species, look.species]
+	if Species.hybrid_of(pair) != "" or Species.line_of(pair) != "":
+		chance = 1.0  # 特别有缘
+	if rng.randf() >= chance:
+		return {"ok": false, "text": "约会结束啦。「%s」说: 我们先做朋友吧~ (%s)" % [who, hearts]}
+	date_ok = look
+	return {"ok": true, "text": "约会好顺利! 「%s」好像也很喜欢它~ (%s)" % [who, hearts]}
+
+
+## 约会广场去不了的时候说什么 (学 V5: 太小去相亲节目会被媒人骂)
+static func date_no(r: String) -> String:
+	return {"small": "还太小了, 长到小孩才能出门哦", "asleep": "嘘, 它在睡觉呢", "sick": "它生病了, 先把病治好吧", "away": "它不在家",
+		"young": "约会广场门口的媒人把它拦住了: 还没长大呢, 长大了再来! (结过婚的也不行哦)",
+		"used_up": "今天约了 %d 次啦, 明天再来吧" % Rules.DATE_PER_DAY}.get(r, "")
 
 
 ## 第八版: 带它去美食街的店吃东西: 回 {text, ok, icon}
@@ -439,6 +673,9 @@ func go_out(id: String) -> Dictionary:
 				out.text = "在公园碰到了「%s」, 一起疯玩了一会儿! 开心 +1" % Species.name_of(out.npc)
 			else:
 				out.text = "在公园碰到了「%s」, 互相打了个招呼" % Species.name_of(out.npc)
+			var friendship := befriend(out.npc)  # 第九版: 碰到成年的就交上朋友 (学 m!x、On 去城镇交朋友)
+			if friendship != "":
+				out.text += " (%s)" % friendship
 		"forest":
 			if not fresh:
 				out.text = "在森林里转了一圈, 这次空手回来啦"
@@ -628,7 +865,7 @@ func toy_wait(id: String) -> int:
 ## 买东西: ok / poor 钱不够 / have 已经有了 / full 吃的放不下了
 func buy(id: String) -> String:
 	var d: Dictionary = Items.DATA[id]
-	if d.kind == "food":
+	if d.kind in Items.STACKED:
 		if int(items.get(id, 0)) >= Items.MAX_STACK:
 			return "full"
 	elif id in owned:
@@ -636,7 +873,7 @@ func buy(id: String) -> String:
 	if money < d.price:
 		return "poor"
 	money -= d.price
-	if d.kind == "food":
+	if d.kind in Items.STACKED:
 		items[id] = int(items.get(id, 0)) + 1
 	else:
 		owned.append(id)
@@ -676,11 +913,12 @@ func take_messages() -> Array:
 # ---------------------------------------------------------------- 存档
 
 func to_dict() -> Dictionary:
-	return {"version": 7, "pet": pet.to_dict() if pet != null else null, "dex": dex, "history": history,
+	return {"version": 8, "pet": pet.to_dict() if pet != null else null, "dex": dex, "history": history,
 		"offset": offset, "difficulty": difficulty, "money": money, "items": items, "owned": owned, "equip": equip,
 		"toy_used": toy_used, "places": places, "outings": outings, "out_at": out_at, "stats": stats, "trophies": trophies,
 		"letters": letters, "pending_letters": pending_letters, "celebrated": celebrated, "souvenirs": souvenirs,
-		"parents": parents, "next_egg": next_egg}
+		"parents": parents, "next_egg": next_egg,
+		"friends": friends, "proposal": proposal, "date_offers": date_offers, "date_day": date_day, "dates_today": dates_today, "date_ok": date_ok}
 
 
 static func from_dict(d: Dictionary) -> Game:
@@ -742,6 +980,20 @@ static func from_dict(d: Dictionary) -> Game:
 	if d.get("next_egg") is Dictionary and not d.next_egg.is_empty():
 		g.next_egg = d.next_egg
 		g.next_egg.gen = int(g.next_egg.get("gen", 2))
+	# 第九版加的
+	for k in d.get("friends", {}):
+		var f: Variant = d.friends[k]
+		if Species.DATA.has(k) and f is Dictionary and f.get("look") is Dictionary:
+			g.friends[str(k)] = {"look": f.look, "hearts": int(f.get("hearts", 0)), "gift_day": int(f.get("gift_day", -1)),
+				"asked_day": int(f.get("asked_day", -1))}
+	g.proposal = str(d.get("proposal", "")) if g.friends.has(str(d.get("proposal", ""))) else ""
+	for o in d.get("date_offers", []):
+		if o is Dictionary and Species.DATA.has(str(o.get("species", ""))):
+			g.date_offers.append(o)
+	g.date_day = int(d.get("date_day", -1))
+	g.dates_today = int(d.get("dates_today", 0))
+	if d.get("date_ok") is Dictionary and Species.DATA.has(str(d.date_ok.get("species", ""))):
+		g.date_ok = d.date_ok
 	g._unlock_places()  # 以前版本养大过成年的, 直接打开新地方
 	g.messages.clear()
 	return g

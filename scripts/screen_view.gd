@@ -206,11 +206,14 @@ func _draw_room(p: float, tint: Color) -> void:
 ## 你养的这只 (第七版: 带上遗传来的颜色和头上的特征)
 func _draw_me(p: float, pos: Vector2, flip: bool, tint: Color) -> void:
 	var pet := game.pet
-	_draw_monster(p, pet.species, pos, flip, tint, pet.hue, pet.feature)
+	_draw_monster(p, pet.species, pos, flip, tint, pet.hue, pet.feature, pet.extra)
 
 
-## 魔物 + 它的帽子、领结 (pos 是魔物图的左上角); hue 遗传来的颜色 (-1 = 原来的), feature 头上的特征 (戴了帽子就盖住)
-func _draw_monster(p: float, species: String, pos: Vector2, flip: bool, tint: Color, hue := -1.0, feature := "") -> void:
+## 魔物 + 它的帽子、领结 (pos 是魔物图的左上角); hue 遗传来的颜色 (-1 = 原来的), feature 头上的特征 (戴了帽子就盖住);
+## extra 第九版身上的东西 (翅膀、尾巴, 少年起才有; 先画, 魔物盖在上面)
+func _draw_monster(p: float, species: String, pos: Vector2, flip: bool, tint: Color, hue := -1.0, feature := "", extra := "") -> void:
+	for part in Art.extra_parts(species, extra, flip):
+		Art.draw(self, part[0], (pos + part[1]) * p, p, part[2], tint)
 	Art.draw(self, species, pos * p, p, flip, tint, Color(0, 0, 0, 0), Art.shift_for(species, hue))
 	var d: Dictionary = Species.DATA[species]
 	if not d.has("hat"):
@@ -238,7 +241,8 @@ func _draw_pet(p: float, pet: Pet, dark: bool) -> void:
 		# 第七版: 结婚了, 两只站在一起, 中间一颗心, 前面一颗蛋
 		var pt: Dictionary = pet.partner
 		_draw_me(p, Vector2(4, 13), false, Color.WHITE)
-		_draw_monster(p, pt.species, Vector2(28, 13), true, Color.WHITE, float(pt.get("hue", -1.0)), str(pt.get("feature", "")))
+		_draw_monster(p, pt.species, Vector2(28, 13), true, Color.WHITE, float(pt.get("hue", -1.0)), str(pt.get("feature", "")),
+			str(pt.get("extra", "")))
 		Art.draw(self, "heart", Vector2(20.5, 4 + (int(t * 2) % 2)) * p, p)
 		Art.draw(self, "egg", Vector2(20, 22) * p, p * 0.5)
 		return
@@ -295,6 +299,11 @@ func _draw_pet(p: float, pet: Pet, dark: bool) -> void:
 		if left < 60 or int(t) % 4 == 0:
 			wobble = round(sin(t * 14.0))  # 快孵了就一直摇, 平时偶尔摇一下
 		Art.draw(self, "egg", Vector2(16 + wobble, 14) * p, p, false, tint)
+		if Species.line_of(pet.pair) != "":
+			# 第九版: 大奖的蛋闪闪发光 (两边的小星星轮流亮)
+			var on := int(t * 3.0) % 2
+			Art.draw(self, "twinkle", Vector2(13, 14 + on * 6) * p, p, false, tint)
+			Art.draw(self, "twinkle", Vector2(32, 20 - on * 6) * p, p, false, tint)
 		return
 	for i in pet.poop:
 		Art.draw(self, "poop", Vector2(41, 25 - i * 7) * p, p, false, tint)

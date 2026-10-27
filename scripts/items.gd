@@ -36,6 +36,10 @@ const DATA := {
 	"bunny": {"name": "小白兔", "kind": "buddy", "price": 100},
 	"jelly": {"name": "小果冻", "kind": "buddy", "price": 120},
 
+	# 第九版: 求婚用的戒指 (学 m!x、On; 用掉就没了, 跟吃的一样存在背包里)
+	"ring": {"name": "戒指", "kind": "ring", "price": 50},
+	"diamond_ring": {"name": "钻石戒指", "kind": "ring", "price": 300},
+
 	"wall_blue": {"name": "淡蓝墙纸", "kind": "wall", "price": 30, "color": "cfe6f2"},
 	"wall_pink": {"name": "粉色墙纸", "kind": "wall", "price": 30, "color": "f6dbe4"},
 	"wall_yellow": {"name": "淡黄墙纸", "kind": "wall", "price": 30, "color": "f5ecc8"},
@@ -51,13 +55,15 @@ const DATA := {
 const ICON := {"apple": "apple", "icecream": "icecream", "cake": "cake", "feast": "feast", "ball": "game",
 	"dumpling": "dumpling", "mooncake": "mooncake", "pumpkin_candy": "snack",
 	"blocks": "blocks", "pinwheel": "pinwheel", "strawhat": "strawhat", "wizardhat": "wizardhat", "crown": "crown",
-	"chick": "chick", "bunny": "bunny", "jelly": "jelly",
+	"chick": "chick", "bunny": "bunny", "jelly": "jelly", "ring": "ring", "diamond_ring": "diamond_ring",
 	"bowtie": "bowtie", "scarf": "scarf", "plant": "plant", "bed": "bed", "painting": "painting", "window": "window"}
 
 
 ## 商店里的分类 (按顺序)
 const SHOP := [["吃的", ["food"]], ["玩具", ["toy"]], ["小宠物", ["buddy"]], ["衣服配饰", ["hat", "neck"]],
-	["房间", ["wall", "rug", "furniture", "decor"]]]
+	["房间", ["wall", "rug", "furniture", "decor"]], ["戒指", ["ring"]]]
+## 第九版: 用掉就没了的东西 (存在背包 items 里, 同一种最多 MAX_STACK 个)
+const STACKED := ["food", "ring"]
 ## 装扮: 一个地方放一样 (帽子一顶、脖子上一样、墙纸一种……)
 const SLOTS := [["buddy", "小宠物"], ["hat", "帽子"], ["neck", "脖子上"], ["wall", "墙纸"], ["rug", "地毯"], ["furniture", "家具"], ["decor", "墙上"]]
 
