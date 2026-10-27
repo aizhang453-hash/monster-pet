@@ -31,6 +31,11 @@ const DATA := {
 	"bowtie": {"name": "红领结", "kind": "neck", "price": 40},
 	"scarf": {"name": "毛围巾", "kind": "neck", "price": 70},
 
+	# 第八版: 魔物养的小宠物 (学拓麻歌子 iD L、P's), 跟在它身边, 只是可爱
+	"chick": {"name": "小黄鸡", "kind": "buddy", "price": 80},
+	"bunny": {"name": "小白兔", "kind": "buddy", "price": 100},
+	"jelly": {"name": "小果冻", "kind": "buddy", "price": 120},
+
 	"wall_blue": {"name": "淡蓝墙纸", "kind": "wall", "price": 30, "color": "cfe6f2"},
 	"wall_pink": {"name": "粉色墙纸", "kind": "wall", "price": 30, "color": "f6dbe4"},
 	"wall_yellow": {"name": "淡黄墙纸", "kind": "wall", "price": 30, "color": "f5ecc8"},
@@ -46,13 +51,15 @@ const DATA := {
 const ICON := {"apple": "apple", "icecream": "icecream", "cake": "cake", "feast": "feast", "ball": "game",
 	"dumpling": "dumpling", "mooncake": "mooncake", "pumpkin_candy": "snack",
 	"blocks": "blocks", "pinwheel": "pinwheel", "strawhat": "strawhat", "wizardhat": "wizardhat", "crown": "crown",
+	"chick": "chick", "bunny": "bunny", "jelly": "jelly",
 	"bowtie": "bowtie", "scarf": "scarf", "plant": "plant", "bed": "bed", "painting": "painting", "window": "window"}
 
 
 ## 商店里的分类 (按顺序)
-const SHOP := [["吃的", ["food"]], ["玩具", ["toy"]], ["衣服配饰", ["hat", "neck"]], ["房间", ["wall", "rug", "furniture", "decor"]]]
+const SHOP := [["吃的", ["food"]], ["玩具", ["toy"]], ["小宠物", ["buddy"]], ["衣服配饰", ["hat", "neck"]],
+	["房间", ["wall", "rug", "furniture", "decor"]]]
 ## 装扮: 一个地方放一样 (帽子一顶、脖子上一样、墙纸一种……)
-const SLOTS := [["hat", "帽子"], ["neck", "脖子上"], ["wall", "墙纸"], ["rug", "地毯"], ["furniture", "家具"], ["decor", "墙上"]]
+const SLOTS := [["buddy", "小宠物"], ["hat", "帽子"], ["neck", "脖子上"], ["wall", "墙纸"], ["rug", "地毯"], ["furniture", "家具"], ["decor", "墙上"]]
 
 
 static func name_of(id: String) -> String:
@@ -91,7 +98,10 @@ static func of_kinds(kinds: Array) -> Array:
 
 ## 吃的有什么用 (写在商店按钮上)
 static func food_text(id: String) -> String:
-	var d: Dictionary = DATA[id]
+	return food_text_of(DATA[id])
+
+
+static func food_text_of(d: Dictionary) -> String:
 	var parts := []
 	if d.hunger >= 4:
 		parts.append("吃得饱饱的")

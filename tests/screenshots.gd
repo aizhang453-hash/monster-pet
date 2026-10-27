@@ -180,6 +180,65 @@ func _v7_family() -> void:
 	g.equip.erase("hat")
 
 
+func _v8() -> void:
+	var g: Game = main.game
+	g.fixed_time = T0
+	g.offset = 0
+	g.pet = Helpers.at("jianjiao", Rules.EASY, T0)
+	g.pet.hunger = 4
+	g.pet.happy = 4
+	main._asked_personality = false
+	main._shown_end = false
+	main._refresh()
+	await _shot("81_选性格")
+	main._pick_personality("lively")
+	g.money = 300
+	g.buy("chick")
+	main.screen.pet_x = 18
+	main.screen.facing = 1
+	main._refresh()
+	await _shot("82_小宠物")
+	g.pet.pest_at = g.pet.now
+	main._refresh()
+	main.message.text = main._hint()
+	await _shot("83_捣蛋精")
+	main._on_pest_tapped()
+	await _shot("84_赶跑了")
+	g.pet.hunger = 2
+	g.outings = ["park", "food", "forest", "lakeside", "night", "hotel"]
+	main.do_action("out")
+	await _shot("85_出门有美食街")
+	main._ask_food()
+	await _shot("86_美食街")
+	main._eat_out("noodle")
+	main.screen.t = main.screen.out_until - 1.0
+	await _shot("87_吃拉面")
+	main.screen.mode = "pet"
+	g.pet.walk_until = g.pet.now + 40 * 60
+	g.pet.walk_from = g.pet.now
+	main._refresh()
+	await _shot("88_出去散步")
+	g.fixed_time = g.pet.walk_until + 10
+	g.tick()
+	main._refresh()
+	await _shot("89_散步回来")
+	main.screen.mode = "status"
+	main.screen.status_page = 1
+	main.screen.status_until = main.screen.t + 99
+	await _shot("90_名片有性格")
+	main.screen.mode = "pet"
+	main._show_help()
+	await _shot("91_怎么玩")
+	main.close_dialog()
+	main.do_action("feed")
+	await _shot("92_喂点什么")
+	main.close_dialog()
+	main._ask_difficulty()
+	await _shot("93_选难度")
+	main.close_dialog()
+	g.equip.erase("buddy")
+
+
 func _run() -> void:
 	main.game.use_system_tz = false  # 游戏的 _ready 这时候才跑完
 	main.game.tz = 0
@@ -438,6 +497,7 @@ func _run() -> void:
 	await _v6_games()
 	await _v6_festivals()
 	await _v7_family()
+	await _v8()
 	# 开始界面: 养着魔物的时候
 	var again = load("res://scenes/main.tscn").instantiate()
 	main.game.offset = main.game.clock() - int(Time.get_unix_time_from_system())  # 再打开的那个看真的钟, 拨到一样的时间

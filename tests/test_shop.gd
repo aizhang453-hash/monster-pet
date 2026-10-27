@@ -66,7 +66,7 @@ func test_buying_things_you_keep() -> void:
 func test_eating_from_the_bag() -> void:
 	var g := _game()
 	g.pet.happy = 1
-	eq(g.act("food", "cake"), "没有蛋糕了")
+	eq(g.act("food", "cake"), "蛋糕已经吃光啦")
 	g.items["cake"] = 1
 	has_text(g.act("food", "cake"), "蛋糕")
 	eq(g.pet.happy, 3)
@@ -91,7 +91,7 @@ func test_toys_need_a_rest_between_plays() -> void:
 	g.pet.happy = 1
 	has_text(g.act("toy", "ball"), "皮球")
 	eq(g.pet.happy, 2)
-	has_text(g.act("toy", "ball"), "还不想玩")
+	has_text(g.act("toy", "ball"), "先歇会儿")
 	eq(g.pet.happy, 2)
 	g.fixed_time = T0 + Items.TOY_COOLDOWN
 	g.tick()

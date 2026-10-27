@@ -57,6 +57,7 @@ func _card() -> String:
 func _later(seconds: int) -> void:
 	main.game.offset += seconds
 	main.game.tick()
+	main._asked_personality = true  # 第八版: 长成小孩会问性格, 别的测试不管这个 (test_pick_personality 专门测)
 	main._refresh()
 
 
@@ -160,7 +161,7 @@ func test_play_the_guessing_game() -> void:
 	main._process(0.0)
 	eq(main.screen.mode, "pet", "玩完自己回去")
 	eq(main.game.money, before + g.reward(), "赚了魔晶")
-	check(main.message.text.contains("赢了") or main.message.text.contains("输了"), main.message.text)
+	check(main.message.text.contains("赢啦") or main.message.text.contains("输了"), main.message.text)
 	check(main.grid.visible)
 
 
@@ -250,7 +251,7 @@ func test_shop_and_dress_up() -> void:
 	main.do_action("more")
 	main.choose(0)  # 商店
 	has_text(main.dialog.get_child(0).get_child(0).get_child(1).text, "500", "商店里写着有多少魔晶")
-	main.choose(2)  # 衣服配饰
+	_pick("衣服配饰")
 	main.choose(0)  # 第一样: 草帽
 	check("strawhat" in main.game.owned, "买了草帽")
 	eq(main.game.money, 450)
@@ -258,14 +259,14 @@ func test_shop_and_dress_up() -> void:
 	check(main.dialog_buttons[0].disabled, "已经有了不能再买")
 	main.close_dialog()
 	main.do_action("more")
-	main.choose(1)  # 装扮
-	main.choose(0)  # 帽子
+	_pick("装扮")
+	_pick("帽子")
 	main.choose(0)  # 不要了
 	check(not main.game.equip.has("hat"), "摘下了帽子")
 	main.close_dialog()
 	main.do_action("more")
 	main.choose(0)
-	main.choose(0)  # 吃的
+	_pick("吃的")
 	main.choose(0)  # 苹果
 	eq(int(main.game.items.get("apple", 0)), 1)
 	main.close_dialog()
@@ -327,7 +328,8 @@ func test_going_out_to_the_park() -> void:
 	check(main.dialog != null, "问去哪儿")
 	eq(main.dialog_buttons[0].text, "学校", "小孩先是学校")
 	eq(main.dialog_buttons[1].text, "公园")
-	eq(main.dialog_buttons[2].text, "旅馆")
+	eq(main.dialog_buttons[2].text, "美食街", "第八版多了美食街")
+	eq(main.dialog_buttons[3].text, "旅馆")
 	main.choose(1)
 	eq(main.screen.mode, "out", "屏幕上看它在公园逛")
 	check(Species.DATA.has(main.screen.out_npc), "碰到了一只魔物")
@@ -342,7 +344,7 @@ func test_hotel_from_the_out_menu() -> void:
 	_feed_up()
 	main.game.money = 100
 	main.do_action("out")
-	main.choose(2)  # 旅馆 (前面是学校、公园)
+	_pick("旅馆")
 	has_text(main.dialog.get_child(0).get_child(0).get_child(1).text, "不管饭")
 	main.choose(0)  # 住 2 小时
 	check(main.game.pet.in_hotel())
@@ -597,3 +599,49 @@ func test_matchmaker_marriage_and_next_generation() -> void:
 	has_text(_card(), "在爸妈家")
 	main.do_action("sitter")
 	check(not main.game.pet.sitting(), "接回来了")
+
+
+func test_pick_personality_when_growing_up() -> void:
+	_start()
+	main.game.offset += 6 * 60 + 3600
+	main.game.tick()
+	main._refresh()
+	eq(main.game.pet.stage, "child")
+	check(main.dialog != null, "长成小孩问它是什么性格")
+	has_text(main.dialog.get_child(0).get_child(0).get_child(0).text, "性格")
+	eq(main.dialog_buttons.size(), Personality.ORDER.size())
+	_pick("悠闲")
+	eq(main.game.pet.personality, "mellow")
+	has_text(_card(), "性格悠闲", "名片上写着性格")
+
+
+func test_eat_out_from_the_out_menu() -> void:
+	_start()
+	_later(6 * 60 + 3600)
+	_feed_up()
+	main.game.pet.hunger = 1
+	main.game.money = 50
+	main.do_action("out")
+	_pick("美食街")
+	has_text(main.dialog.get_child(0).get_child(0).get_child(0).text, "美食街")
+	_pick("面包店")
+	eq(main.game.pet.hunger, 3, "吃了面包")
+	eq(main.game.money, 50 - Outings.SHOPS.bakery.price)
+	eq(main.screen.mode, "out", "屏幕上看它在美食街吃")
+
+
+func test_tap_the_pest_away() -> void:
+	_start()
+	_later(6 * 60 + 3600)
+	_feed_up()
+	main.game.pet.pest_at = main.game.pet.now
+	main._refresh()
+	has_text(main._hint(), "捣蛋精", "没有新消息的时候, 下面那行提醒有捣蛋精")
+	var r: Rect2 = main.screen.pest_rect()
+	var ev := InputEventMouseButton.new()
+	ev.button_index = MOUSE_BUTTON_LEFT
+	ev.pressed = true
+	ev.position = (r.position + r.size / 2.0) * main.screen.px()
+	main.screen._gui_input(ev)
+	eq(main.game.pet.pest_at, 0, "点一下就赶跑了")
+	has_text(main.message.text, "赶跑")

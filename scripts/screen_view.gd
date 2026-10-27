@@ -7,6 +7,7 @@ extends Control
 const W := 48
 const H := 32
 signal pet_touched   # 第五版: 手指 (鼠标) 点到了魔物 (摸摸它)
+signal pest_tapped   # 第八版: 点到了捣蛋精 (赶走它)
 
 const PLAY_COLORS := {"red": Color("e8483a"), "yellow": Color("ffd84a"), "blue": Color("2f6fd0"), "green": Color("7cd36b")}
 
@@ -60,7 +61,10 @@ func _process(delta: float) -> void:
 
 func _walk(delta: float) -> void:
 	_move_timer += delta
-	if _move_timer < 0.7:
+	var step_time := 0.7
+	if game != null and game.pet != null and Personality.LIST.has(game.pet.personality):
+		step_time = Personality.LIST[game.pet.personality].speed  # 第八版: 活泼的走得快, 悠闲的慢吞吞
+	if _move_timer < step_time:
 		return
 	_move_timer = 0.0
 	var pet := game.pet if game != null else null
@@ -82,9 +86,18 @@ func _gui_input(event: InputEvent) -> void:
 	if not pressed or mode != "pet" or game == null or game.pet == null:
 		return
 	var at: Vector2 = event.position / px()
+	if game.pet.pest_at > 0 and pest_rect().grow(2).has_point(at):
+		pest_tapped.emit()
+		accept_event()
+		return
 	if Rect2(pet_x, 12, 16, 19).has_point(at):
 		pet_touched.emit()
 		accept_event()
+
+
+## 捣蛋精在屏幕上的位置 (右上角飘来飘去)
+func pest_rect() -> Rect2:
+	return Rect2(36 + round(sin(t * 1.7) * 3.0), 3 + round(sin(t * 2.9)), 8, 7)
 
 
 func show_effect(name: String) -> void:
@@ -235,6 +248,14 @@ func _draw_pet(p: float, pet: Pet, dark: bool) -> void:
 		_draw_me(p, Vector2(x, 14 + (int(t * 2) % 2)), false, Color.WHITE)
 		Art.draw(self, "bag", Vector2(x - 3, 21) * p, p)
 		return
+	if pet.walking():
+		# 第八版: 自己出去散步了, 家里空空的, 门口留着一串小脚印
+		_draw_room(p, tint)
+		for i in 4:
+			Art.draw(self, "shoe", Vector2(6 + i * 8, 24 - (i % 2) * 2) * p, p * 0.5, false, Color(1, 1, 1, 0.6))
+		_text(Vector2(4, 12), "出去散步啦", p, Look.INK, 4.2)
+		_text(Vector2(4, 19), "大概 %s 后回来" % Game.sitter_text(maxi(60, pet.walk_until - pet.now)), p, Look.INK, 3.2)
+		return
 	if pet.sitting() and pet.sit_where == "parents" and not game.parents.is_empty():
 		# 第七版: 在爸妈家, 屏幕上是爸妈
 		var a: Dictionary = game.parents.a
@@ -295,6 +316,15 @@ func _draw_pet(p: float, pet: Pet, dark: bool) -> void:
 					var wave := 1 if (int(t * 3.0) + i) % 2 == 0 else 0
 					draw_line(Vector2(pet_x + 5 + i * 5 + wave, 9 + bob) * p, Vector2(pet_x + 6 + i * 5 - wave, 12 + bob) * p,
 						Color("8a9a5a") * tint, p * 0.7)
+	if game.equip.has("buddy"):
+		# 第八版: 小宠物跟在它旁边, 一跳一跳的
+		var bud: String = Items.ICON[game.equip.buddy]
+		var bx := pet_x - 7 if facing > 0 else pet_x + 17
+		var hop := 0 if pet.asleep or int(t * 3.0) % 2 == 0 else 1
+		Art.draw(self, bud, Vector2(clampf(bx, 0, W - 6), 24 - hop) * p, p, facing < 0, tint)
+	if pet.pest_at > 0 and not pet.asleep:
+		var pr := pest_rect()
+		Art.draw(self, "pest", pr.position * p, p, int(t * 2) % 2 == 0, tint)
 	if pet.sick:
 		Art.draw(self, "skull", Vector2(33, 1) * p, p, false, tint)
 	if pet.wants_leave:
@@ -349,8 +379,11 @@ func card_lines(pet: Pet) -> Array:
 	else:
 		where = "住在" + where
 	var gen := "第 %d 代 · " % pet.gen if pet.gen > 1 else ""
+	if pet.walking():
+		where = "出去散步了"
+	var mood := " · 性格%s" % Personality.name_of(pet.personality) if pet.personality != "" else ""
 	return [pet.display_name(), "%s%d 岁 · %d 克" % [gen, pet.age(), pet.weight],
-		"%s · %s" % [where, Rules.DIFFICULTY_NAMES[pet.difficulty]], "魔晶 %d" % game.money]
+		where + mood, "魔晶 %d · %s" % [game.money, Rules.DIFFICULTY_NAMES[pet.difficulty]]]
 
 
 ## 状态第一页: 名片 (左上名字, 右上它的样子, 下面几行小字)
@@ -369,6 +402,9 @@ func _draw_card(p: float, pet: Pet) -> void:
 func _draw_out(p: float, pet: Pet) -> void:
 	var look: Array = Outings.LOOK.get(out_id, ["dfe9d3", "8cc06a"])
 	draw_rect(Rect2(Vector2(0, 30) * p, Vector2(W, 2) * p), Color(look[1]))
+	if out_id == "food":
+		for i in 8:  # 美食街的小店雨棚, 红白条纹
+			draw_rect(Rect2(Vector2(i * 6, 0) * p, Vector2(6, 4) * p), Color("e8483a") if i % 2 == 0 else Color("fff6ea"))
 	if out_id == "night":
 		for i in 6:  # 夜市的小灯笼
 			Art.draw(self, "lantern", Vector2(3 + i * 8, 2 + (i % 2) * 2) * p, p)

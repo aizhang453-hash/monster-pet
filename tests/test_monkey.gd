@@ -5,7 +5,7 @@ extends TestCase
 const T0 := Helpers.T0
 const PETS := 2000
 const ACTIONS := ["meal", "snack", "lights", "game", "medicine", "clean", "scold", "leave_yes", "leave_no", "sit", "unsit",
-	"food", "toy", "hotel", "unhotel", "move", "praise", "pat", "study", "job", "work", "train", "soil", "match_yes", "match_no", "parents", "nothing"]
+	"food", "toy", "hotel", "unhotel", "move", "praise", "pat", "study", "job", "work", "train", "soil", "match_yes", "match_no", "parents", "shoo", "callback", "personality", "nothing"]
 
 var rng := RandomNumberGenerator.new()
 var endings := {}
@@ -86,6 +86,12 @@ func _do(p: Pet, what: String) -> void:
 			p.answer_match(-1)
 		"parents":
 			p.start_sitter("parents")
+		"shoo":
+			p.shoo()
+		"callback":
+			p.end_walk()
+		"personality":
+			p.set_personality(Personality.ORDER[rng.randi() % Personality.ORDER.size()])
 		"medicine":
 			p.give_medicine()
 		"clean":
@@ -110,6 +116,9 @@ func _check(p: Pet, last_now: int) -> void:
 	check(p.discipline >= 0 and p.discipline <= 4, "%s 管教 %d" % [where, p.discipline])
 	check(p.poop >= 0 and p.poop <= Rules.MAX_POOP, "%s 便便 %d" % [where, p.poop])
 	check(p.tidy >= 0 and p.tidy <= 4, "%s 干净 %d" % [where, p.tidy])
+	check([p.sitting(), p.in_hotel(), p.walking()].count(true) <= 1, "%s 托人、旅馆、散步只会有一样" % where)
+	check(p.pest_at == 0 or not p.asleep, "%s 睡着的时候没有捣蛋精" % where)
+	check(p.personality == "" or Personality.LIST.has(p.personality), "%s 性格 %s" % [where, p.personality])
 	check(p.gen >= 1 and p.hue >= -1.0 and p.hue < 1.0, "%s 第 %d 代, 颜色 %.2f" % [where, p.gen, p.hue])
 	check(not p.wants_match or (p.stage == "adult" and p.partner.is_empty()), "%s 只有没结婚的成年才有媒人" % where)
 	if p.end_reason == "married":
@@ -145,6 +154,6 @@ func _check(p: Pet, last_now: int) -> void:
 		check(p.call == "" or p.call == "lights", "%s 睡着时只会因为没关灯叫你" % where)
 	for e in p.events:
 		check(e.kind in ["grow", "call", "mistake", "poop", "sick", "sleep", "wake", "leave_ask", "end", "sit_start", "sit_end",
-				"hotel_start", "hotel_end", "match_ask"],
+				"hotel_start", "hotel_end", "match_ask", "walk_start", "walk_end", "pest", "pest_hit"],
 			"%s 事件 %s" % [where, e.kind])
 	p.events.clear()

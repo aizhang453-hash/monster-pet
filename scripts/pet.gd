@@ -86,6 +86,14 @@ var partner := {}             # 结婚的对象
 var sit_where := "sitter"     # 托给谁: sitter 照看的人 / parents 爸妈家
 var parents_day := -1         # 哪天在爸妈家学过东西 (一天一次)
 
+# 第八版: 自己出去散步、捣蛋精、性格
+var walk_until := 0           # 自己出去散步, 什么时候回来 (0 = 在家)
+var walk_from := 0            # 什么时候出去的
+var next_walk := 0            # 下一次想出去散步
+var pest_at := 0              # 捣蛋精什么时候来的 (0 = 没有)
+var next_pest := 0            # 下一次捣蛋精来
+var personality := ""         # 性格 (Personality.LIST 的代号; 空 = 还没定)
+
 var end_reason := ""          # neglect 没人照顾 / sick 病死 / old 老死 / left 离开了 / married 结婚了
 var ended_at := 0
 
@@ -99,7 +107,8 @@ const SAVE_KEYS := ["difficulty", "place", "species", "stage", "born_at", "hatch
 	"lifespan", "wants_leave", "leave_ask_at", "end_reason", "ended_at", "sit_since", "sit_used", "sit_day", "hotel_until",
 	"power", "speed", "guard", "rank", "trained_at", "matched_at",
 	"smart", "style", "kind", "job", "classes", "class_at", "work_at", "patted_at", "next_good", "tidy", "next_dirty",
-	"gen", "hue", "feature", "match_at", "wants_match", "match_offers", "partner", "sit_where", "parents_day"]
+	"gen", "hue", "feature", "match_at", "wants_match", "match_offers", "partner", "sit_where", "parents_day",
+	"walk_until", "walk_from", "next_walk", "pest_at", "next_pest", "personality"]
 
 
 static func create(t: int, diff: String, tz_offset := 0, rng_seed := 0) -> Pet:
@@ -166,6 +175,12 @@ func _next_due() -> int:
 		if stage != "baby":
 			c.append(next_tantrum)
 			c.append(next_good)
+			c.append(next_walk)
+			c.append(next_pest)
+	if pest_at > 0:
+		c.append(pest_at + Rules.PEST_WINDOW[difficulty])
+	if walking():
+		c.append(walk_until)
 	if _has_sleep():
 		c.append(_next_sleep_change())
 	if call != "":
@@ -198,6 +213,8 @@ func _update() -> void:
 	_sleep_or_wake()
 	if sitting() and now >= _sitter_end_time():
 		end_sitter(true)
+	if walking() and now >= walk_until:
+		end_walk(true)
 	if in_hotel():
 		_hotel_update()
 	if not away():  # 托人照看、住旅馆的时候, 有人管着, 下面这些都不会发生
@@ -205,6 +222,7 @@ func _update() -> void:
 			_needs()
 		_settle()
 		_expire_call()
+		_pest_update()
 		_sickness()
 		if is_over():
 			return
@@ -248,9 +266,11 @@ func _become(id: String) -> void:
 	next_hunger = now + drop
 	next_happy = now + int(drop * 1.5)  # 跟饿错开一点
 	next_poop = now + Rules.POOP_EVERY[stage]
-	next_dirty = now + Rules.DIRTY_EVERY[difficulty]
+	next_dirty = now + dirty_every()
 	if stage != "baby":
 		next_tantrum = now + rng.randi_range(Rules.TANTRUM_GAP[0], Rules.TANTRUM_GAP[1])
+		next_walk = now + rng.randi_range(Rules.WALK_GAP[0], Rules.WALK_GAP[1])
+		next_pest = now + rng.randi_range(Rules.PEST_GAP[0], Rules.PEST_GAP[1])
 		next_good = now + rng.randi_range(Rules.GOOD_GAP[0], Rules.GOOD_GAP[1])
 	if stage == "adult":
 		var life: int = Species.DATA[id].life + rng.randi_range(Rules.LIFESPAN_RANDOM[0], Rules.LIFESPAN_RANDOM[1])
@@ -294,6 +314,7 @@ func _sleep_or_wake() -> void:
 	var should := is_sleep_time(now)
 	if should and not asleep:
 		asleep = true
+		pest_at = 0  # 睡着了捣蛋精也走了
 		if call != "":
 			call = ""  # 睡着了就不叫了 (没算失误)
 		events.append({"kind": "sleep"})
@@ -312,7 +333,7 @@ func _sleep_or_wake() -> void:
 		next_hunger = now + drop
 		next_happy = now + int(drop * 1.5)  # 跟饿错开一点
 		next_poop = now + Rules.POOP_EVERY[stage]
-		next_dirty = now + Rules.DIRTY_EVERY[difficulty]
+		next_dirty = now + dirty_every()
 		next_tantrum = maxi(next_tantrum, now + Rules.HOUR)
 		events.append({"kind": "wake"})
 
@@ -335,13 +356,13 @@ func _needs() -> void:
 			poop_since = now
 		next_poop = now + Rules.POOP_EVERY[stage]
 	if next_dirty == 0:
-		next_dirty = now + Rules.DIRTY_EVERY[difficulty]  # 以前版本的存档没有这个
+		next_dirty = now + dirty_every()  # 以前版本的存档没有这个
 	if now >= next_dirty:
 		if tidy > 0:
 			tidy -= 1
 		else:
 			happy = maxi(0, happy - 1)  # 脏兮兮的, 不舒服
-		next_dirty = now + Rules.DIRTY_EVERY[difficulty]
+		next_dirty = now + dirty_every()
 	if stage != "baby" and now >= next_tantrum:
 		if call == "" or call == "good":  # 闹脾气比「做了好事等你夸」要紧
 			call = "discipline"
@@ -350,6 +371,29 @@ func _needs() -> void:
 		next_tantrum = now + rng.randi_range(Rules.TANTRUM_GAP[0], Rules.TANTRUM_GAP[1])
 	if stage != "baby" and next_good == 0:
 		next_good = now + rng.randi_range(Rules.GOOD_GAP[0], Rules.GOOD_GAP[1])  # 以前版本的存档没有这个
+	# 第八版: 自己出去散步 (心情好、不饿、没生病、没叫你、家里没便便, 回来之前不会到睡觉的时候)。
+	# 一开始没管便便, 量难度发现原版严格多了不少病死: 它在外面的时候便便还在计时, 主人又没法打扫
+
+	if stage != "baby" and next_walk == 0:
+		next_walk = now + rng.randi_range(Rules.WALK_GAP[0], Rules.WALK_GAP[1])  # 以前版本的存档没有这个
+	if stage != "baby" and now >= next_walk:
+		var length := rng.randi_range(Rules.WALK_TIME[0], Rules.WALK_TIME[1])
+		if happy >= 3 and hunger >= 2 and not sick and call == "" and poop == 0 and not is_sleep_time(now + length):
+			walk_until = now + length
+			walk_from = now
+			pest_at = 0
+			events.append({"kind": "walk_start"})
+			next_walk = now + rng.randi_range(Rules.WALK_GAP[0], Rules.WALK_GAP[1])
+			return
+		next_walk = now + Rules.HOUR  # 现在不想出去, 过一会儿再看
+	# 第八版: 捣蛋精
+	if stage != "baby" and next_pest == 0:
+		next_pest = now + rng.randi_range(Rules.PEST_GAP[0], Rules.PEST_GAP[1])
+	if stage != "baby" and now >= next_pest:
+		if pest_at == 0:
+			pest_at = now
+			events.append({"kind": "pest"})
+		next_pest = now + rng.randi_range(Rules.PEST_GAP[0], Rules.PEST_GAP[1])
 	if stage != "baby" and now >= next_good:
 		if call == "":
 			call = "good"  # 做了一件好事 (第五版: 该夸它了)
@@ -379,6 +423,15 @@ func _settle() -> void:
 			call = want
 			call_at = now
 			events.append({"kind": "call", "what": want})
+
+
+## 捣蛋精来了太久没赶走: 把它吓一跳 (开心 -1; 不算失误)
+func _pest_update() -> void:
+	if pest_at > 0 and now >= pest_at + Rules.PEST_WINDOW[difficulty]:
+		pest_at = 0
+		happy = maxi(0, happy - 1)
+		events.append({"kind": "pest_hit"})
+		_settle()
 
 
 func _expire_call() -> void:
@@ -443,6 +496,8 @@ func _end(reason: String) -> void:
 		sit_used += now - sit_since
 		sit_since = 0
 	hotel_until = 0
+	walk_until = 0
+	pest_at = 0
 	events.append({"kind": "end", "reason": reason})
 
 
@@ -496,7 +551,8 @@ func feed_snack() -> String:
 	if asleep:
 		return "asleep"
 	happy = mini(4, happy + 1)
-	weight += Rules.SNACK_WEIGHT
+	if personality != "spoiled":  # 爱撒娇的吃零食不会胖
+		weight += Rules.SNACK_WEIGHT
 	_settle()
 	return "ok"
 
@@ -558,7 +614,7 @@ func clean() -> String:
 	if asleep:
 		return "asleep"
 	tidy = 4
-	next_dirty = now + Rules.DIRTY_EVERY[difficulty]
+	next_dirty = now + dirty_every()
 	return "bath"
 
 
@@ -643,6 +699,7 @@ func start_sitter(where := "sitter") -> String:
 		return "used_up"
 	sit_since = now
 	sit_where = where
+	pest_at = 0
 	# 照看的人接手: 喂饱、哄开心、打扫、治病; 不叫你
 	hunger = 4
 	happy = 4
@@ -680,7 +737,7 @@ func end_sitter(auto := false) -> String:
 	next_hunger = now + drop
 	next_happy = now + int(drop * 1.5)
 	next_poop = now + Rules.POOP_EVERY[stage]
-	next_dirty = now + Rules.DIRTY_EVERY[difficulty]
+	next_dirty = now + dirty_every()
 	next_tantrum = maxi(next_tantrum, now + Rules.HOUR)
 	recall_at = now
 	events.append({"kind": "sit_end", "auto": auto, "where": sit_where, "taught": taught})
@@ -696,9 +753,53 @@ func in_hotel() -> bool:
 	return hotel_until > 0
 
 
-## 托人照看或住旅馆, 不在家
+## 托人照看、住旅馆、自己出去散步, 不在家
 func away() -> bool:
-	return sitting() or in_hotel()
+	return sitting() or in_hotel() or walking()
+
+
+# ---------------------------------------------------------------- 第八版: 自己出去散步、捣蛋精、性格
+
+func walking() -> bool:
+	return walk_until > 0
+
+
+## 散步回来 (done = 逛完了自己回来; false = 你叫它回来的, 没逛完)。
+## 散步的时候它的时间像停着一样: 什么时候饿、拉便便、变脏……都往后挪出去的那么久。
+## (一开始是回来一分钟就拉便便, 快睡觉时回来的话便便放一整晚会生病, 量难度时查出来的)
+## 闹脾气、做好事不挪 (到时间了回来就闹), 不然管教的机会变少, 长成好的那几种的变少 (也是量出来的)
+func end_walk(done := false) -> String:
+	if not walking():
+		return "no"
+	walk_until = 0
+	var gone := maxi(0, now - walk_from)
+	for k in ["next_hunger", "next_happy", "next_poop", "next_dirty", "next_pest"]:
+		set(k, int(get(k)) + gone)
+	recall_at = now
+	events.append({"kind": "walk_end", "done": done})
+	_settle()
+	return "ok"
+
+
+## 赶走捣蛋精
+func shoo() -> String:
+	if pest_at == 0:
+		return "none"
+	pest_at = 0
+	return "ok"
+
+
+## 多久脏一格 (悠闲的脏得慢一半)
+func dirty_every() -> int:
+	return Rules.DIRTY_EVERY[difficulty] * (2 if personality == "mellow" else 1)
+
+
+## 选性格 (长成小孩以后才能选, 选了就不改)
+func set_personality(id: String) -> String:
+	if not Personality.LIST.has(id) or personality != "" or stage in ["egg", "baby"] or is_over():
+		return "no"
+	personality = id
+	return "ok"
 
 
 func start_hotel(until: int) -> String:
@@ -711,6 +812,7 @@ func start_hotel(until: int) -> String:
 	if hunger == 0 or happy == 0:
 		return "hungry"  # 旅馆不管饭: 先喂饱、哄开心再去 (On / Meets 也是这样)
 	hotel_until = until
+	pest_at = 0
 	call = ""
 	poop = 0  # 旅馆帮忙打扫, 还给它洗澡
 	poop_since = 0
@@ -729,7 +831,7 @@ func end_hotel(reason := "pickup") -> String:
 	if reason == "late":
 		happy = maxi(0, happy - 2)
 	next_poop = now + Rules.POOP_EVERY[stage]
-	next_dirty = now + Rules.DIRTY_EVERY[difficulty]
+	next_dirty = now + dirty_every()
 	next_tantrum = maxi(next_tantrum, now + Rules.HOUR)
 	next_hunger = maxi(next_hunger, now + 60)
 	next_happy = maxi(next_happy, now + 60)
@@ -870,6 +972,8 @@ func study(subject: String, correct: int) -> String:
 	if r != "ok":
 		return r
 	last_gain = correct + (Training.DISCIPLINE_BONUS if discipline >= 4 and correct > 0 else 0)
+	if personality == "diligent" and correct > 0:
+		last_gain += 1  # 认真的上课多涨 1
 	set(subject, mini(Training.MAX_STAT, int(get(subject)) + last_gain))
 	classes += 1
 	class_at = now
@@ -939,7 +1043,7 @@ func pat() -> String:
 		return "no"
 	if asleep:
 		return "asleep"
-	if now - patted_at < Rules.PAT_COOLDOWN:
+	if now - patted_at < Rules.PAT_COOLDOWN / (2 if personality == "shy" else 1):
 		return "again"
 	patted_at = now
 	happy = mini(4, happy + 1)

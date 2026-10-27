@@ -52,3 +52,7 @@ static func care(p: Pet, until: int, step := 5 * 60, do_clean := true, do_medici
 			p.answer_leave(false)
 		if p.wants_match and decline_match:
 			p.answer_match(-1)
+		if p.walking():
+			p.end_walk()  # 第八版: 勤快的主人把散步的叫回来 (测试好算)
+		if p.pest_at > 0:
+			p.shoo()

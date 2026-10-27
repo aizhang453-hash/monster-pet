@@ -60,6 +60,7 @@ func _care(p: Pet) -> void:
 	if p.asleep:
 		if p.lights:
 			p.toggle_lights()
+		p.clean()  # 第八版: 睡着了也顺手把便便扫掉 (真人会这么做; 以前不扫, 睡前的便便放一整晚会病)
 		return
 	while p.hunger < 4 and p.feed_meal() in ["ok", "bland"]:
 		pass
@@ -74,6 +75,8 @@ func _care(p: Pet) -> void:
 	if p.call == "good":
 		p.praise()
 	if p.wants_match:
-		p.answer_match(-1)  # 第七版: 量难度的主人不结婚 (跟以前的数字好比)
+		p.answer_match(-1)
+	if p.pest_at > 0:
+		p.shoo()  # 第八版: 看到捣蛋精就赶走 (散步就让它散)  # 第七版: 量难度的主人不结婚 (跟以前的数字好比)
 	if p.wants_leave:
 		p.answer_leave(true)

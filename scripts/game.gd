@@ -12,6 +12,7 @@ var tz := 0                 # 本地时间比世界时间快多少秒
 var use_system_tz := true   # 测试关掉, 用固定的 tz
 var fixed_time := -1        # 测试用: 不看真的钟, 把「现在」钉在这个时间 (-1 = 看真的钟)
 var last_result := ""       # 上一个动作的结果代号 (ok full asleep……), 画面用来决定冒什么小图标
+var last_gift := ""         # 第八版: 散步回来带的东西 (画面冒的小图标)
 
 # 第二版: 魔晶、背包、装扮 (跟着主人, 换一只魔物也还在)
 var money := Items.START_MONEY
@@ -90,6 +91,8 @@ func _take_events() -> void:
 					_job_letter()
 			"match_ask":
 				pet.match_offers = Genes.offers(places, pet.species, rng)
+			"walk_end":
+				e.text = _walk_gift() if e.get("done", false) else ""
 			"end":
 				history.append({"species": pet.species, "reason": e.reason, "age": pet.age(),
 					"difficulty": pet.difficulty, "ended_at": pet.ended_at, "rank": pet.rank, "gen": pet.gen,
@@ -99,14 +102,14 @@ func _take_events() -> void:
 					parents = {"a": Genes.look_of(pet), "b": pet.partner, "gen": pet.gen}
 					next_egg = Genes.child(Genes.look_of(pet), pet.partner, pet.gen, rng)
 					pending_letters.append({"at": pet.ended_at + Rules.DAY, "title": "爸妈家寄来的信",
-						"body": "我们在爸妈家住得很好。\n忙的时候, 把孩子送过来吧 (出门 → 爸妈家), 我们会好好照顾它, 还会教它一些东西。\n—— %s和%s" %
+						"body": "我们在爸妈家住得可舒服啦。\n忙的时候就把孩子送过来吧 (出门 → 爸妈家), 我们会好好照顾它, 还会教它一些东西。\n—— %s和%s" %
 						[pet.display_name(), Species.name_of(pet.partner.species)]})
 				elif e.reason == "old":
 					next_egg = Genes.child(Genes.look_of(pet), {}, pet.gen, rng)  # 老死留下一颗蛋
 				if e.reason == "left":
 					# 放走的魔物过一天寄信回来 (第五版「收到信」; 信里的话是 Claude 暂定的, 用户想改随时改)
 					pending_letters.append({"at": pet.ended_at + Rules.DAY, "title": "「%s」寄来的信" % pet.display_name(),
-						"body": "我在外面过得很好, 认识了新朋友, 每天都去新的地方。\n谢谢你把我养大!\n—— %s" % pet.display_name()})
+						"body": "我在外面过得超好的! 认识了好多新朋友, 每天都去没去过的地方。\n谢谢你把我养大!\n—— %s" % pet.display_name()})
 		var text := describe(e)
 		if text != "":
 			messages.append({"text": text, "rank": RANK.get(e.kind, 1)})
@@ -114,7 +117,7 @@ func _take_events() -> void:
 
 
 ## 同时发生好几件事, 画面只显示最要紧的一条
-const RANK := {"end": 5, "grow": 4, "leave_ask": 4, "match_ask": 4, "sit_end": 3, "hotel_end": 3, "sick": 3, "mistake": 3, "call": 2,
+const RANK := {"end": 5, "grow": 4, "leave_ask": 4, "match_ask": 4, "pest": 3, "pest_hit": 3, "walk_start": 2, "walk_end": 2, "sit_end": 3, "hotel_end": 3, "sick": 3, "mistake": 3, "call": 2,
 	"poop": 1, "sleep": 1, "wake": 1, "sit_start": 1, "hotel_start": 1}
 
 
@@ -122,42 +125,50 @@ func describe(e: Dictionary) -> String:
 	match e.kind:
 		"grow":
 			if e.from == "egg":
-				return "孵出来了! 是「%s」, 它饿了, 快喂它!" % Species.name_of(e.id)
-			return "长大了! 变成了「%s」" % Species.name_of(e.id)
+				return "孵出来啦! 是「%s」! 它肚子咕咕叫, 快喂它~" % Species.name_of(e.id)
+			return "长大啦! 变成了「%s」" % Species.name_of(e.id)
 		"call":
-			return {"hunger": "它饿了! 喂它吃饭吧", "happy": "它不开心, 陪它玩一玩、给点零食",
-				"lights": "它睡着了, 记得关灯", "discipline": "它在无理取闹, 该管教一下了",
-				"good": "它做了一件好事, 夸夸它吧 (管教 → 夸它)"}[e.what]
+			return {"hunger": "它饿得咕噜咕噜叫, 喂它吃饭吧", "happy": "它闷闷不乐的, 陪它玩一玩、给点零食吧",
+				"lights": "它睡着了, 帮它关个灯吧", "discipline": "它在耍小脾气! 该管教一下了",
+				"good": "它做了件好事! 快夸夸它 (管教 → 夸它)"}[e.what]
 		"mistake":
-			return "没及时照顾它…… (照顾失误 +1)"
+			return "没来得及照顾它…… (照顾失误 +1)"
 		"poop":
-			return "它拉便便了"
+			return "噗~ 它拉便便了"
 		"sick":
-			return "它生病了! 快给它吃药"
+			return "它生病了, 头上冒出小骷髅! 快给它吃药"
 		"sleep":
-			return "它困了, 睡着了"
+			return "它打了个大哈欠, 睡着了"
 		"wake":
-			return "早上好, 它醒了"
+			return "早上好! 它醒啦"
 		"leave_ask":
-			return "它长大了, 说想出去闯荡……"
+			return "它长大了, 说想出去看看外面的世界……"
 		"match_ask":
-			return "媒人来了, 想给它介绍对象……"
+			return "叮咚~ 媒人上门啦!"
+		"walk_start":
+			return "它自己溜出去散步啦~ 一会儿就回来"
+		"walk_end":
+			return e.get("text", "")
+		"pest":
+			return "哎呀, 有只捣蛋精溜进来了! 快点它一下把它赶跑"
+		"pest_hit":
+			return "捣蛋精扮了个鬼脸, 把它吓了一大跳…… (开心 -1)"
 		"sit_end":
 			if not e.get("auto", false):
 				return ""
 			if e.get("where", "") == "parents":
 				return "今天的时间到了, 爸妈把它送回来了" + ("。爸妈教了它一些东西 (聪明、时尚、善良 +1)" if e.get("taught", false) else "")
-			return "今天托人照看的时间到了, 它被送回来了"
+			return "今天托人照看的时间到了, 它被送回来啦"
 		"hotel_end":
-			return {"hungry": "它饿了或不开心, 旅馆把它送回家了", "late": "约好的时间没去接, 它自己回来了, 很生气 (开心 -2)"}.get(e.reason, "")
+			return {"hungry": "它饿了闹着要回家, 旅馆把它送回来了", "late": "约好的时间没去接, 它自己气呼呼地回来了 (开心 -2)"}.get(e.reason, "")
 		"end":
 			return ending_text(e.reason)
 	return ""
 
 
 static func ending_text(reason: String) -> String:
-	return {"neglect": "没人照顾, 它死掉了……", "sick": "病得太重, 它死掉了……",
-		"old": "它老了, 安安静静地走了, 留下了一颗蛋。", "left": "它出发去闯荡了! 一路顺风!",
+	return {"neglect": "没人照顾它…… 它变成了小幽灵。", "sick": "病得太重…… 它变成了小幽灵。",
+		"old": "它老了, 安安静静地走了, 留下了一颗蛋。", "left": "它背上小包出发啦! 一路顺风~",
 		"married": "结婚了! 生下一颗蛋, 两口子搬去爸妈家住了。"}.get(reason, "")
 
 
@@ -171,24 +182,26 @@ func act(what: String, arg: Variant = null) -> String:
 	match what:
 		"meal":
 			r = pet.feed_meal()
-			text = {"ok": "吃了饭, 饱一点了", "full": "它吃饱了, 不想吃",
-				"bland": "吃了, 不过一脸嫌弃 (长大了觉得白饭没味道)"}.get(r, "")
+			text = {"ok": "吃了饭, 肚子饱一点啦", "full": "吃饱饱了, 它把头扭过去不想吃",
+				"bland": "吃是吃了, 一脸嫌弃: 白饭好没味道哦……"}.get(r, "")
 		"snack":
 			r = pet.feed_snack()
-			text = {"ok": "吃了零食, 好开心! (吃多了会胖哦)"}.get(r, "")
+			text = {"ok": "零食好好吃! 开心~ (吃多了会胖哦)"}.get(r, "")
 		"lights":
 			r = pet.toggle_lights()
-			text = {"on": "开灯了", "off": "关灯了"}.get(r, "")
+			text = {"on": "啪, 开灯啦", "off": "关灯了, 晚安~"}.get(r, "")
 		"game":
 			# arg = {won: 赢了没有, reward: 给多少魔晶}
 			r = pet.finish_game(bool(arg.won))
 			if r == "won" or r == "lost":
+				if r == "won" and pet.personality == "lively":
+					arg.reward = ceili(int(arg.reward) * 1.3)  # 第八版: 活泼的赢了多拿三成
 				money += int(arg.reward)
-				text = ("赢了! 它很开心" if r == "won" else "输了…… 它有点失望") + (", 得到魔晶 %d" % arg.reward if arg.reward > 0 else "")
+				text = ("赢啦! 它乐得转圈圈" if r == "won" else "输了…… 它有点小失落") + (", 拿到魔晶 %d" % arg.reward if arg.reward > 0 else "")
 		"food":
 			if int(items.get(arg, 0)) <= 0:
 				r = "none"
-				text = "没有%s了" % Items.name_of(arg)
+				text = "%s已经吃光啦" % Items.name_of(arg)
 			else:
 				r = pet.eat(Items.DATA[arg])
 				if r == "ok":
@@ -198,79 +211,88 @@ func act(what: String, arg: Variant = null) -> String:
 					items[arg] = int(items[arg]) - 1
 					if items[arg] <= 0:
 						items.erase(arg)
-					text = "吃了%s, 好吃!" % Items.name_of(arg)
+					text = "%s好好吃! 吃得一干二净~" % Items.name_of(arg)
 				else:
-					text = {"full": "它吃饱了, 不想吃"}.get(r, "")
+					text = {"full": "吃饱饱了, 它把头扭过去不想吃"}.get(r, "")
 		"toy":
 			var wait := toy_wait(arg)
 			if wait > 0:
 				r = "tired"
-				text = "它刚玩过%s, 还不想玩 (%s以后)" % [Items.name_of(arg), sitter_text(wait)]
+				text = "刚玩过%s, 它说先歇会儿 (%s以后再玩)" % [Items.name_of(arg), sitter_text(wait)]
 			else:
 				r = pet.play_toy()
 				if r == "ok":
 					toy_used[arg] = clock()
-					text = "陪它玩%s, 它很开心!" % Items.name_of(arg)
+					text = "陪它玩%s, 玩得好开心!" % Items.name_of(arg)
 		"medicine":
 			r = pet.give_medicine()
-			text = {"healthy": "它没生病, 不用吃药", "more": "吃了药, 还要再吃一次", "cured": "病好了!"}.get(r, "")
+			text = {"healthy": "它好好的, 不用吃药啦", "more": "咕嘟, 吃了药! 还要再吃一次哦", "cured": "病好啦! 又活蹦乱跳了"}.get(r, "")
 		"clean":
 			r = pet.clean()
-			text = {"nothing": "很干净, 不用打扫", "ok": "打扫干净了" + (" (身上也有点脏, 再按一次给它洗澡)" if pet.tidy < 4 else ""),
+			text = {"nothing": "很干净啦, 不用打扫", "ok": "便便扫干净啦" + (", 它身上也有点脏, 再按一次给它洗个澡吧" if pet.tidy < 4 else ""),
 				"bath": "洗了个澡, 香喷喷的!"}.get(r, "")
 		"scold":
 			r = pet.scold()
-			text = {"good": "管教了它, 它乖了一点", "sad": "它没闹, 被骂了很委屈 (不开心 -1)"}.get(r, "")
+			text = {"good": "说了它几句, 它乖乖不闹了", "sad": "它明明没闹, 被骂得好委屈…… (开心 -1)"}.get(r, "")
 		"train":
 			r = pet.train(arg)
 			if r == "ok":
-				text = "练%s, %s +%d!" % [Training.DRILLS[arg][0], Training.STATS[arg], pet.last_gain]
+				text = "嘿咻嘿咻, 练了%s! %s +%d" % [Training.DRILLS[arg][0], Training.STATS[arg], pet.last_gain]
 			else:
-				text = {"small": "宝宝还太小, 长到小孩再练", "hungry": "饿着或不开心, 不想练", "tired": "刚练过, 歇一会儿吧 (%s以后)" %
+				text = {"small": "宝宝还太小啦, 长到小孩再练", "hungry": "肚子饿或者不开心, 它不想练", "tired": "刚练完, 让它喘口气吧 (%s以后)" %
 					sitter_text(maxi(60, pet.trained_at + Training.TRAIN_COOLDOWN - pet.now))}.get(r, "")
 		"praise":
 			r = pet.praise()
-			text = {"good": "夸了它, 它很开心 (善良 +2)", "puzzled": "它没做什么, 不明白你为什么夸它"}.get(r, "")
+			text = {"good": "夸了它! 它不好意思地笑了 (善良 +2)", "puzzled": "它歪着头: 我做了什么吗?"}.get(r, "")
 		"pat":
 			r = pet.pat()
-			text = {"ok": "摸摸它, 它很开心", "again": "它蹭了蹭你的手指"}.get(r, "")
+			text = {"ok": "摸摸头~ 它舒服得眯起了眼睛", "again": "它蹭了蹭你的手指"}.get(r, "")
 		"study":
 			# arg = {subject 哪门课, correct 答对几题}
 			r = pet.study(arg.subject, int(arg.correct))
 			if r == "ok":
-				text = "%s答对 %d 题, %s +%d" % [School.SUBJECTS[arg.subject].name, arg.correct, School.SUBJECTS[arg.subject].stat, pet.last_gain]
+				text = "%s答对了 %d 题! %s +%d" % [School.SUBJECTS[arg.subject].name, arg.correct, School.SUBJECTS[arg.subject].stat, pet.last_gain]
 				if pet.classes % 5 == 0:
 					_report_letter()
 			else:
-				text = {"small": "宝宝还太小", "grown": "长大了, 该去上班了", "tired": "刚下课, 歇一会儿吧"}.get(r, "")
+				text = {"small": "宝宝还太小啦", "grown": "已经是大人啦, 该去上班了", "tired": "刚下课, 让它玩一会儿吧"}.get(r, "")
 		"work":
 			# arg = 赢了没有
 			var pay := pet.work_done(bool(arg))
 			if pay >= 0:
 				money += pay
 				r = "won" if bool(arg) else "lost"
-				text = "下班了! %s得到魔晶 %d" % ["干得不错, " if bool(arg) else "有点手忙脚乱, ", pay]
+				text = "下班啦! %s拿到魔晶 %d" % ["今天干得不错, " if bool(arg) else "今天有点手忙脚乱, ", pay]
 			else:
 				r = pet.can_work()
-				text = {"tired": "刚下班, 歇一会儿吧", "hungry": "饿着或不开心, 上不了班", "nojob": "还没有工作"}.get(r, "")
+				text = {"tired": "刚下班, 让它歇会儿吧", "hungry": "肚子饿或者不开心, 上不了班", "nojob": "还没有工作呢"}.get(r, "")
 		"sitter":
-			if pet.in_hotel():
+			if pet.walking():
+				r = pet.end_walk(false)
+				text = "把它叫回来了, 它还有点意犹未尽"
+			elif pet.in_hotel():
 				r = pet.end_hotel("pickup")
-				text = "从旅馆接回来了"
+				text = "从旅馆接回来啦"
 				if rng.randf() < SOUVENIR_CHANCE:
 					add_souvenir("key")
-					text += ", 还带回了纪念品「%s」" % Items.SOUVENIRS.key.name
+					text += ", 还带回了纪念品「%s」!" % Items.SOUVENIRS.key.name
 			elif pet.sitting():
 				var at_parents := pet.sit_where == "parents"
 				r = pet.end_sitter()
 				if at_parents:
-					text = "从爸妈家接回来了" + (", 爸妈教了它一些东西 (聪明、时尚、善良 +1)" if r == "taught" else "")
+					text = "从爸妈家接回来啦" + (", 爸妈教了它一些东西 (聪明、时尚、善良 +1)" if r == "taught" else "")
 				else:
-					text = "接回来了, 照看的人把它喂得饱饱的"
+					text = "接回来啦, 被照顾得饱饱的"
 			else:
 				r = pet.start_sitter()
-				text = {"ok": "托给别人照看了 (今天还能托 %s)" % sitter_text(pet.sitter_left()),
-					"used_up": "今天托人照看的时间用完了 (每天最多 %s)" % sitter_text(Rules.SITTER_PER_DAY)}.get(r, "")
+				text = {"ok": "托给别人照看啦 (今天还能托 %s)" % sitter_text(pet.sitter_left()),
+					"used_up": "今天托人照看的时间用完啦 (每天最多 %s)" % sitter_text(Rules.SITTER_PER_DAY)}.get(r, "")
+		"shoo":
+			r = pet.shoo()
+			text = "啪! 把捣蛋精赶跑啦" if r == "ok" else ""
+		"personality":
+			r = pet.set_personality(str(arg))
+			text = "原来它是%s的性格呀~" % Personality.name_of(str(arg)) if r == "ok" else ""
 		"parents":
 			if not can_visit_parents():
 				r = "no"
@@ -283,19 +305,19 @@ func act(what: String, arg: Variant = null) -> String:
 			# arg = 挑第几个 (-1 = 现在还不想结婚)
 			pet.answer_match(int(arg))
 			r = "married" if pet.end_reason == "married" else "later"
-			text = "" if r == "married" else "现在还不想结婚。媒人说过一天再来。"
+			text = "" if r == "married" else "现在还不想结婚。媒人说: 那我过一天再来~"
 		"leave":
 			pet.answer_leave(bool(arg))
 			r = "ok"
-			text = "" if bool(arg) else "它决定留下来陪你。"
+			text = "" if bool(arg) else "它决定留下来, 继续陪着你~"
 	last_result = r
 	if text == "":
 		var no := ""
 		if pet.stage == "egg":
-			no = "还在蛋里呢, 等它孵出来吧"
+			no = "还在蛋里呢, 再等等吧"
 		elif pet.sitting():
-			no = "它托给别人照看了, 先接回来"
-		text = {"asleep": "它在睡觉, 别吵它", "sick": "它生病了, 不想玩", "no": no}.get(r, "")
+			no = "它不在家, 先接回来吧"
+		text = {"asleep": "嘘, 它在睡觉呢", "sick": "它生病了, 没力气玩", "no": no}.get(r, "")
 	_take_events()
 	return text
 
@@ -312,7 +334,7 @@ func _unlock_places() -> void:
 		var place: String = Species.PLACE_ORDER[i]
 		if adults >= i and not place in places:
 			places.append(place)
-			messages.append({"text": "新的地方「%s」打开了! 下一颗蛋可以在那里养, 会长成那里的魔物" % Species.PLACES[place].name, "rank": 5})
+			messages.append({"text": "新的地方「%s」打开啦! 下一颗蛋可以在那里养, 会长成那里的魔物哦" % Species.PLACES[place].name, "rank": 5})
 
 
 ## 搬家: 小孩长成少年时住在哪, 就长成哪里的魔物; 长大以后搬家只换风景
@@ -328,7 +350,43 @@ func move(place: String) -> String:
 func _unlock_outing(id: String, ok: bool) -> void:
 	if ok and not id in outings:
 		outings.append(id)
-		messages.append({"text": "新的地方「%s」可以去了!" % Outings.info(id).name, "rank": 5})
+		messages.append({"text": "新的地方「%s」可以去啦!" % Outings.info(id).name, "rank": 5})
+
+
+## 第八版: 自己散步回来带的东西 (魔晶、苹果, 或者认识了新朋友); 回一句话
+func _walk_gift() -> String:
+	var roll := rng.randf()
+	if roll < 0.45:
+		var m := rng.randi_range(3, 8)
+		money += m
+		last_gift = "coin"
+		return "它散步回来啦, 嘴里叼着魔晶 %d!" % m
+	if roll < 0.75 and int(items.get("apple", 0)) < Items.MAX_STACK:
+		items["apple"] = int(items.get("apple", 0)) + 1
+		last_gift = "apple"
+		return "它散步回来啦, 还捡了一个苹果!"
+	pet.happy = mini(4, pet.happy + 1)
+	last_gift = "heart"
+	return "它散步回来啦, 说在路上交了个新朋友, 开心 +1"
+
+
+## 第八版: 带它去美食街的店吃东西: 回 {text, ok, icon}
+func eat_out(shop: String) -> Dictionary:
+	tick()
+	var r := can_go_out()
+	if r != "ok":
+		return {"text": {"small": "还太小了, 长到小孩才能出门", "asleep": "它在睡觉, 别吵它", "sick": "它生病了, 先治好吧",
+			"away": "它不在家"}.get(r, ""), "ok": false}
+	var d: Dictionary = Outings.SHOPS[shop]
+	if money < int(d.price):
+		return {"text": "魔晶不够啦, 去玩几局小游戏再来吧", "ok": false}
+	r = pet.eat(d)
+	if r != "ok":
+		return {"text": "它肚子圆滚滚的, 吃不下啦", "ok": false}
+	money -= int(d.price)
+	last_result = "ok"
+	_take_events()
+	return {"text": "在%s吃了%s, 好好吃!" % [d.name, d.food], "ok": true, "icon": d.icon}
 
 
 ## 第七版: 能不能送去爸妈家 (爸妈是上一代的时候)
@@ -356,7 +414,7 @@ func go_out(id: String) -> Dictionary:
 	tick()
 	var r := can_go_out()
 	if r != "ok":
-		return {"text": {"small": "还太小了, 长到小孩才能出门", "asleep": "它在睡觉, 别吵它", "sick": "它生病了, 先治好吧",
+		return {"text": {"small": "还太小了, 长到小孩才能出门哦", "asleep": "嘘, 它在睡觉呢", "sick": "它生病了, 先把病治好吧",
 			"away": "它不在家"}.get(r, ""), "npc": "", "item": ""}
 	if not id in outings:
 		return {"text": "还没解锁: " + Outings.info(id).unlock, "npc": "", "item": ""}
@@ -378,16 +436,16 @@ func go_out(id: String) -> Dictionary:
 			out.npc = others[rng.randi() % others.size()]
 			if fresh:
 				pet.happy = mini(4, pet.happy + 1)
-				out.text = "公园里碰到「%s」, 一起玩, 开心 +1" % Species.name_of(out.npc)
+				out.text = "在公园碰到了「%s」, 一起疯玩了一会儿! 开心 +1" % Species.name_of(out.npc)
 			else:
-				out.text = "公园里碰到「%s」, 打了个招呼" % Species.name_of(out.npc)
+				out.text = "在公园碰到了「%s」, 互相打了个招呼" % Species.name_of(out.npc)
 		"forest":
 			if not fresh:
-				out.text = "在森林里转了一圈, 这次没捡到东西"
+				out.text = "在森林里转了一圈, 这次空手回来啦"
 			elif rng.randf() < 0.6 and int(items.get("apple", 0)) < Items.MAX_STACK:
 				items["apple"] = int(items.get("apple", 0)) + 1
 				out.item = "apple"
-				out.text = "在森林里捡到一个苹果!"
+				out.text = "在森林里捡到一个红苹果!"
 			else:
 				var m := rng.randi_range(5, 10)
 				money += m
@@ -398,18 +456,18 @@ func go_out(id: String) -> Dictionary:
 				var m := rng.randi_range(8, 15)
 				money += m
 				out.item = "coin"
-				out.text = "在湖边钓鱼, 钓到魔晶 %d!" % m
+				out.text = "在湖边钓鱼…… 钓上来一小袋魔晶 %d!" % m
 			else:
-				out.text = "在湖边钓了一会儿鱼, 这次什么都没钓到"
+				out.text = "在湖边钓了半天, 鱼都不上钩……"
 		"night":
 			if fresh:
 				var food: String = ["cake", "icecream"][rng.randi() % 2]
 				if int(items.get(food, 0)) < Items.MAX_STACK:
 					items[food] = int(items.get(food, 0)) + 1
 				out.item = food
-				out.text = "逛夜市, 小摊送了一个%s!" % Items.name_of(food)
+				out.text = "逛夜市啦! 小摊老板送了一个%s~" % Items.name_of(food)
 			else:
-				out.text = "逛了逛夜市, 好热闹"
+				out.text = "逛了逛夜市, 好热闹呀"
 	if fresh and id != "hotel":
 		out_at[id] = now
 		# 第六版: 偶尔带回那个地方的纪念品
@@ -497,13 +555,13 @@ func _job_letter() -> void:
 	for id in School.JOB_ORDER:
 		if School.can_take(pet, id):
 			can.append(School.JOBS[id].name)
-	add_letter("工作介绍所的信", "恭喜「%s」长大了! 现在可以找工作了 (出门 → 上班)。\n照它现在的本事, 能做: %s。\n多上课、多训练, 能做的工作会更多。" %
+	add_letter("工作介绍所的信", "恭喜「%s」长大啦! 现在可以找工作了 (出门 → 上班)。\n照它现在的本事, 能做: %s。\n多上课、多训练, 能做的工作会越来越多哦。" %
 		[pet.display_name(), "、".join(can)])
 
 
 ## 每上 5 节课, 学校寄来成绩单
 func _report_letter() -> void:
-	add_letter("学校寄来的成绩单", "「%s」一共上了 %d 节课。\n聪明 %d、时尚 %d、善良 %d。\n继续加油!" %
+	add_letter("学校寄来的成绩单", "「%s」一共上了 %d 节课啦。\n聪明 %d、时尚 %d、善良 %d。\n继续加油哦!" %
 		[pet.display_name(), pet.classes, pet.smart, pet.style, pet.kind])
 
 
@@ -518,9 +576,9 @@ func compete(level: int) -> Dictionary:
 	tick()
 	var res := pet.compete(level)
 	if res.has("error"):
-		res.text = {"small": "长到少年才能比赛", "asleep": "它在睡觉", "sick": "它生病了, 先治好吧", "hungry": "饿着或不开心, 比不了",
-			"tired": "刚比过, 歇一会儿吧 (%s以后)" % sitter_text(maxi(60, pet.matched_at + Training.MATCH_COOLDOWN - pet.now)),
-			"locked": "先赢了下面一级再来"}.get(res.error, "现在比不了")
+		res.text = {"small": "长到少年才能比赛哦", "asleep": "嘘, 它在睡觉呢", "sick": "它生病了, 先把病治好吧", "hungry": "肚子饿或者不开心, 比不了",
+			"tired": "刚比完, 让它歇会儿吧 (%s以后)" % sitter_text(maxi(60, pet.matched_at + Training.MATCH_COOLDOWN - pet.now)),
+			"locked": "先赢了下面一级再来吧"}.get(res.error, "现在比不了")
 		return res
 	var foes := []
 	for place in places:
@@ -535,11 +593,11 @@ func compete(level: int) -> Dictionary:
 	if res.rank_up:
 		trophies[level] = int(trophies.get(level, 0)) + 1
 	if res.won:
-		res.text = "%s赢了「%s」! 得到魔晶 %d" % [info.name, Species.name_of(res.foe_species), res.prize]
+		res.text = "%s赢了「%s」! 拿到魔晶 %d" % [info.name, Species.name_of(res.foe_species), res.prize]
 		if res.rank_up:
-			res.text += ", 拿到%s奖杯!" % Training.RANK_NAMES[level]
+			res.text += ", 还拿到了%s奖杯!" % Training.RANK_NAMES[level]
 	else:
-		res.text = "%s输给了「%s」…… 得到魔晶 %d" % [info.name, Species.name_of(res.foe_species), res.prize]
+		res.text = "%s输给了「%s」…… 下次加油! 拿到魔晶 %d" % [info.name, Species.name_of(res.foe_species), res.prize]
 	_take_events()
 	return res
 
