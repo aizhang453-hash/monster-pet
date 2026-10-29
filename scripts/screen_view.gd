@@ -29,6 +29,8 @@ var status_page := 1
 # 第三版: 出门的画面 (几秒钟)
 var out_id := ""
 var out_npc := ""
+var out_family: Array = []   # 第十一版: 去看家人时, 那个地方住着的家人 (样子)
+var out_place := ""
 var out_item := ""
 var out_until := 0.0
 var _move_timer := 0.0
@@ -76,6 +78,8 @@ func _walk(delta: float) -> void:
 		facing = -facing
 	pet_x += facing * 2
 	var right := 23.0 if pet.poop > 0 else 31.0  # 有便便的话右边留给便便
+	if not pet.twin.is_empty():
+		right -= 14.0  # 第十一版: 双胞胎的另一只走在右边
 	if pet_x <= 1.0 or pet_x >= right:
 		pet_x = clampf(pet_x, 1.0, right)
 		facing = -facing
@@ -145,6 +149,13 @@ func show_outing(id: String, npc: String, item: String) -> void:
 	mode = "out"
 
 
+## 第十一版: 去看住在那个地方的家人 (那个地方的底色, 家人小小的一排在右边)
+func show_family(place: String, family: Array) -> void:
+	show_outing("family", "", "heart")
+	out_place = place
+	out_family = family.duplicate()
+
+
 func start_play(id: String, rng_seed := 0, hard := false) -> void:
 	minigame = MiniGames.make(id, rng_seed, hard)
 	mode = "play"
@@ -168,6 +179,8 @@ func _draw() -> void:
 		bg = Color(Items.DATA[game.equip.wall].color)
 	if mode == "out" and Outings.LOOK.has(out_id):
 		bg = Color(Outings.LOOK[out_id][0])
+	if mode == "out" and out_id == "family" and Species.PLACE_LOOK.has(out_place):
+		bg = Color(Species.PLACE_LOOK[out_place][0])
 	draw_rect(Rect2(Vector2.ZERO, size), Look.LCD_DARK if dark else bg)
 	if pet == null:
 		return
@@ -315,6 +328,12 @@ func _draw_pet(p: float, pet: Pet, dark: bool) -> void:
 		return
 	for i in pet.poop:
 		Art.draw(self, "poop", Vector2(41, 25 - i * 7) * p, p, false, tint)
+	if not pet.twin.is_empty():
+		# 第十一版: 双胞胎的另一只走在旁边 (一起照顾, 跳的节拍错开一点)
+		var tw := pet.twin_look()
+		var tbob := 0 if pet.asleep or int(t * 2.0 + 1) % 2 == 0 else 1
+		_draw_monster(p, pet.species, Vector2(pet_x + 14, (15 if pet.asleep else 14) + tbob), facing < 0,
+			tint * (Color(0.85, 0.85, 0.9) if pet.asleep else Color.WHITE), float(tw.hue), str(tw.feature), str(tw.extra), pet.old)
 	if pet.asleep:
 		_draw_me(p, Vector2(pet_x, 15), facing < 0, tint * Color(0.85, 0.85, 0.9))
 		var n := int(t * 1.5) % 3 + 1
@@ -399,7 +418,7 @@ func card_lines(pet: Pet) -> Array:
 	if pet.walking():
 		where = "出去散步了"
 	var mood := " · 性格%s" % Personality.name_of(pet.personality) if pet.personality != "" else ""
-	return [pet.display_name() + (" · 老啦" if pet.old else ""), "%s%d 岁 · %d 克" % [gen, pet.age(), pet.weight],
+	return [pet.display_name() + (" ×2" if not pet.twin.is_empty() else "") + (" · 老啦" if pet.old else ""), "%s%d 岁 · %d 克" % [gen, pet.age(), pet.weight],
 		where + mood, "魔晶 %d · %s" % [game.money, Rules.DIFFICULTY_NAMES[pet.difficulty]]]
 
 
@@ -418,7 +437,15 @@ func _draw_card(p: float, pet: Pet) -> void:
 ## 出门的画面: 那个地方的底色和地面, 魔物走过去, 碰到的魔物站在右边, 带回来的东西冒在头上
 func _draw_out(p: float, pet: Pet) -> void:
 	var look: Array = Outings.LOOK.get(out_id, ["dfe9d3", "8cc06a"])
+	if out_id == "family":
+		look = Species.PLACE_LOOK.get(out_place, look)
 	draw_rect(Rect2(Vector2(0, 30) * p, Vector2(W, 2) * p), Color(look[1]))
+	if out_id == "family":
+		# 家人小小的一排, 一跳一跳地欢迎它
+		for i in out_family.size():
+			var f: Dictionary = out_family[i]
+			var hop := 1 if (int(t * 3) + i) % 2 == 0 else 0
+			_mini(str(f.species), Vector2(22 + i * 6.5, 22 - hop), true, float(f.get("hue", -1.0)))
 	if out_id == "food":
 		for i in 8:  # 美食街的小店雨棚, 红白条纹
 			draw_rect(Rect2(Vector2(i * 6, 0) * p, Vector2(6, 4) * p), Color("e8483a") if i % 2 == 0 else Color("fff6ea"))

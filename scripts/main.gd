@@ -372,6 +372,9 @@ func _ask_out() -> void:
 			lines.append("？？？: 还没解锁哦 (%s)" % o.unlock)
 	options.append(["约会广场", _ask_date])  # 第九版 (放在最后, 不打乱以前的顺序)
 	lines.append("约会广场: 长大了来这里约会, 顺利的话就能求婚 (一天 %d 次)" % Rules.DATE_PER_DAY)
+	if not game.places_with_family().is_empty():
+		options.append(["看看家人", _ask_visit])  # 第十一版
+		lines.append("看看家人: 去看看住在各个地方的家人")
 	# 第九版: 地方多了, 一行一个会顶出屏幕, 改成两列的格子
 	var cells := []
 	for o in options:
@@ -381,6 +384,28 @@ func _ask_out() -> void:
 	var extra := dialog_buttons.duplicate()
 	_dialog("去哪儿玩?", "\n".join(lines), [["算了", close_dialog]], grid_box)
 	dialog_buttons = extra + dialog_buttons
+
+
+## 第十一版: 去看看住在各个地方的家人 (学乐园: 以前养大的住在地上)
+func _ask_visit() -> void:
+	var options := []
+	var lines := []
+	for place in game.places_with_family():
+		var names := []
+		for r in game.residents[place]:
+			names.append(Species.name_of(str(r.species)))
+		options.append(["%s (%d 位)" % [Species.PLACES[place].name, names.size()], _visit.bind(place)])
+		lines.append("%s: %s" % [Species.PLACES[place].name, "、".join(names)])
+	options.append(["算了", close_dialog])
+	_dialog("去看看家人", "\n".join(lines), options)
+
+
+func _visit(place: String) -> void:
+	close_dialog()
+	var res := game.visit_family(place)
+	if res.ok:
+		screen.show_family(place, game.residents[place])
+	_after(res.text)
 
 
 ## 第八版: 美食街挑一家店
@@ -866,6 +891,10 @@ func _show_ending() -> void:
 			more = "\n\n咦, 这颗蛋在闪闪发光! 孵出来的宝宝好像跟谁都不一样……"
 		elif Species.hybrid_of(pair) != "":
 			more += "\n爸妈特别有缘, 好好照顾它的话, 说不定会有惊喜哦~"
+	if pet.end_reason in ["married", "left"]:
+		more += "\n%s以后住在%s, 出门 → 看看家人 就能去看哦。" % ["两口子" if pet.end_reason == "married" else "它", Species.PLACES[pet.place].name]
+	if not pet.twin.is_empty() and pet.end_reason in ["married", "left", "matchmaker"]:
+		more += "\n双胞胎的另一只也搬到%s住啦。" % Species.PLACES[pet.place].name
 	_dialog(head, "%s\n它活了 %d 岁, 已经记进图鉴啦。%s" % [Game.ending_text(pet.end_reason), pet.age(), more], options)
 
 
@@ -960,6 +989,8 @@ func _go_date(i: int) -> void:
 
 
 func _answer_date(yes: bool) -> void:
+	if yes and _ask_twin(_answer_date.bind(true)):
+		return
 	close_dialog()
 	_after(game.act("date_propose", yes))
 
@@ -1016,6 +1047,8 @@ func _gift(sp: String) -> void:
 
 
 func _propose(sp: String) -> void:
+	if game.pet.stage == "adult" and not game.pet.old and _ask_twin(_propose.bind(sp), "再想想", close_dialog):
+		return
 	var text := game.act("propose", sp)
 	close_dialog()
 	_after(text)
@@ -1035,6 +1068,9 @@ func _show_family() -> void:
 		var looks := [h.look]
 		if h.get("partner_look") is Dictionary and not h.partner_look.is_empty():
 			looks.append(h.partner_look)
+		var twin: Dictionary = h.get("twin", {}) if h.get("twin") is Dictionary else {}
+		if h.get("current", false) and game.pet != null:
+			twin = game.pet.twin_look()
 		for i in looks.size():
 			var lk: Dictionary = looks[i].duplicate()
 			lk["old"] = i == 0 and h.get("old", false)
@@ -1050,6 +1086,8 @@ func _show_family() -> void:
 		var names := Species.name_of(str(h.look.species))
 		if looks.size() > 1:
 			names += " + " + Species.name_of(str(h.partner_look.species))
+		if not twin.is_empty():
+			names += " (双胞胎)"
 		var how: String = "现在养着, %d 岁" % int(h.age) if h.get("current", false) else \
 			"%d 岁 · %s" % [int(h.age), FAMILY_END.get(str(h.reason), "")]
 		text.text = "第 %d 代 · %s\n%s" % [int(h.gen), names, how]
@@ -1108,6 +1146,8 @@ func _ask_proposal() -> void:
 
 
 func _answer_proposal(yes: bool) -> void:
+	if yes and _ask_twin(_answer_proposal.bind(true)):
+		return
 	close_dialog()
 	_after(game.act("proposal", yes))
 
@@ -1199,8 +1239,39 @@ func _scroll_if_long(c: Control, count: int) -> Control:
 
 
 func _answer_match(i: int) -> void:
+	if i >= 0 and _ask_twin(_answer_match.bind(i), "回去重新挑", _ask_match):
+		return
 	close_dialog()
 	_after(game.act("match", i))
+
+
+## 第十一版: 双胞胎要结婚时先问让哪一只去 (学 On 官方说明书: 双胞胎挑一只结婚); 另一只搬到长大的地方住。
+## 要问的话回 true (挑好以后再接着做 then); 不是双胞胎、已经挑过了回 false
+var _twin_picked := false
+
+
+func _ask_twin(then: Callable, back_label := "", back := Callable()) -> bool:
+	if game.pet == null or game.pet.twin.is_empty() or _twin_picked:
+		_twin_picked = false
+		return false
+	var cells := []
+	var looks := [Genes.look_of(game.pet), game.pet.twin_look()]
+	var names := ["老大", "老二"]
+	for k in 2:
+		cells.append([names[k], Art.look_texture(looks[k], 4), _pick_twin.bind(k, then), true])
+	dialog_buttons = []
+	var grid_box := _button_grid(cells)
+	var extra := dialog_buttons.duplicate()
+	_dialog("让谁去结婚?", "双胞胎里挑一只去结婚吧~ 另一只会搬到%s住, 出门 → 看看家人 就能去看它。" % Species.PLACES[game.pet.place].name,
+		[[back_label, back]] if back_label != "" else [], grid_box)
+	dialog_buttons = extra + dialog_buttons
+	return true
+
+
+func _pick_twin(k: int, then: Callable) -> void:
+	game.pet.choose_twin(k)
+	_twin_picked = true
+	then.call()
 
 
 func _go_parents() -> void:
@@ -1485,5 +1556,6 @@ func _show_help() -> void:
 		"长大以后, 媒人会上门介绍对象, 结婚会生下一颗蛋。它也可能想出去闯荡, 放不放它走由你决定。\n" +
 		"有的两位特别有缘, 生的宝宝照顾得好会长成没见过的混血魔物; 想知道谁跟谁有缘, 问问算命的吧!\n" +
 		"不想等媒人的话: 去「约会广场」约会, 顺利就能求婚; 也可以跟朋友慢慢变熟, 带戒指去求婚, 交情满了它还会来求婚。过节那天还有节日嘉宾哦\n" +
-		"长大以后好几天还没结婚, 它就老了: 媒人不来了, 也不能再结婚; 它会问你能不能去当媒人, 以后来你家做媒。",
+		"长大以后好几天还没结婚, 它就老了: 媒人不来了, 也不能再结婚; 它会问你能不能去当媒人, 以后来你家做媒。\n" +
+		"结了婚的两口子、放走的孩子, 会住到它们长大的地方 (每个地方最多 %d 位), 出门 → 看看家人 就能去看。结婚生的蛋偶尔是双胞胎哦!" % Rules.RESIDENTS_MAX,
 		[["知道了", close_dialog]])

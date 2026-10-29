@@ -49,7 +49,16 @@ static func child(a: Dictionary, b: Dictionary, gen: int, rng: RandomNumberGener
 			e = str(b.get("extra", ""))
 		pair = [a.species, b.species]
 	h = fposmod(h + rng.randf_range(-MUTATION, MUTATION), 1.0)
-	return {"gen": gen + 1, "hue": h, "feature": f, "extra": e, "pair": pair}
+	var out := {"gen": gen + 1, "hue": h, "feature": f, "extra": e, "pair": pair}
+	if not b.is_empty() and rng.randf() < Rules.TWIN_CHANCE:
+		# 第十一版: 双胞胎 (学 On 官方说明书: 长成一模一样的, 或者慢慢长得不一样); 种类还是看照顾, 两只一起照顾
+		if rng.randf() < 0.5:
+			out.twin = {"hue": h, "feature": f, "extra": e}
+		else:
+			out.twin = {"hue": fposmod(mix(hue_of(a), hue_of(b)) + rng.randf_range(-MUTATION, MUTATION), 1.0),
+				"feature": feature_of(a) if rng.randf() < 0.5 else feature_of(b),
+				"extra": str(a.get("extra", "")) if rng.randf() < 0.5 else str(b.get("extra", ""))}
+	return out
 
 
 ## 第九版: 算命的 / 配对模拟器 (学 m!x 的算命和 My Lab 的配对模拟): 这两位的孩子大概什么样。

@@ -758,3 +758,39 @@ func test_old_age_retire_and_family_tree() -> void:
 	main._asked_match = false
 	main._refresh()
 	has_text(main.dialog.get_child(0).get_child(0).get_child(1).text, "当了媒人的「火焰龙」")
+
+
+func test_twins_pick_one_to_marry_and_visit_family() -> void:
+	_start()
+	_later(6 * 60)
+	var p: Pet = main.game.pet
+	p.hatched_at = p.now
+	p._become("huolong")
+	p.twin = {"hue": 0.5, "feature": "leaf", "extra": "wing"}
+	_feed_up()
+	main.close_dialog()
+	check(main.screen.card_lines(p)[0].contains("×2"), "名片上写着双胞胎")
+	p.wants_match = true
+	p.match_offers = [{"species": "hailong", "hue": 0.6, "feature": "fin", "extra": ""}]
+	main._asked_match = false
+	main._refresh()
+	main.choose(0)
+	has_text(main.dialog.get_child(0).get_child(0).get_child(0).text, "让谁去结婚")
+	_pick("回去重新挑")
+	has_text(main.dialog.get_child(0).get_child(0).get_child(0).text, "媒人")
+	main.choose(0)
+	_pick("老二")
+	eq(main.game.pet.end_reason, "married")
+	eq(main.game.pet.feature, "leaf", "老二结婚了")
+	eq(main.game.residents.grass.size(), 3)
+	_pick("孵这颗蛋")
+	_later(6 * 60 + 3600)
+	main.close_dialog()
+	_feed_up()
+	main.close_dialog()
+	main.do_action("out")
+	_pick("看看家人")
+	has_text(main.dialog.get_child(0).get_child(0).get_child(1).text, "草原")
+	_pick("草原")
+	eq(main.screen.mode, "out", "屏幕上去看家人")
+	eq(main.screen.out_family.size(), 3)

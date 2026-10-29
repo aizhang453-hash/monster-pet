@@ -104,6 +104,9 @@ var old := false              # 老了 (成年好几天还没结婚): 媒人不�
 var old_at := 0               # 什么时候变老
 var wants_retire := false     # 老了以后想去当媒人, 等你答应
 
+# 第十一版: 双胞胎 (两只一起照顾, 饿和开心是同一份; 这里记的是老二的颜色、头上、身上, 老大就是上面那些)
+var twin := {}
+
 var end_reason := ""          # neglect 没人照顾 / sick 病死 / old 老死 / left 离开了 / married 结婚了
 var ended_at := 0
 
@@ -118,7 +121,7 @@ const SAVE_KEYS := ["difficulty", "place", "species", "stage", "born_at", "hatch
 	"power", "speed", "guard", "rank", "trained_at", "matched_at",
 	"smart", "style", "kind", "job", "classes", "class_at", "work_at", "patted_at", "next_good", "tidy", "next_dirty",
 	"gen", "hue", "feature", "match_at", "wants_match", "match_offers", "partner", "sit_where", "parents_day",
-	"walk_until", "walk_from", "next_walk", "pest_at", "next_pest", "personality", "pair", "extra", "morph_at", "old", "old_at", "wants_retire"]
+	"walk_until", "walk_from", "next_walk", "pest_at", "next_pest", "personality", "pair", "extra", "morph_at", "old", "old_at", "wants_retire", "twin"]
 
 
 static func create(t: int, diff: String, tz_offset := 0, rng_seed := 0) -> Pet:
@@ -684,6 +687,25 @@ func scold() -> String:
 
 
 ## 它说想离开: 放它走 (true) 还是留下来 (false)
+## 第十一版: 双胞胎里挑哪一只 (0 老大 / 1 老二) 去结婚: 挑老二就把两只的样子换一下, 结婚的总是「上面那一只」
+func choose_twin(k: int) -> void:
+	if k != 1 or twin.is_empty():
+		return
+	var mine := {"hue": hue, "feature": feature, "extra": extra}
+	hue = float(twin.get("hue", -1.0))
+	feature = str(twin.get("feature", ""))
+	extra = str(twin.get("extra", ""))
+	twin = mine
+
+
+## 双胞胎老二的样子 (没有就是空的)
+func twin_look() -> Dictionary:
+	if twin.is_empty():
+		return {}
+	return {"species": species, "hue": float(twin.get("hue", -1.0)), "feature": str(twin.get("feature", "")),
+		"extra": str(twin.get("extra", ""))}
+
+
 ## 第十版: 老了以后想去当媒人 (学 Connection: 没结婚的老了自己变成媒人)。答应就出发 (留下一颗蛋, 以后来你家做媒); 不答应就留下来陪你到老
 func answer_retire(yes: bool) -> void:
 	if not wants_retire:

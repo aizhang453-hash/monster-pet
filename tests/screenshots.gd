@@ -431,6 +431,59 @@ func _v10() -> void:
 	g.fixed_time = T0
 
 
+## 第十一版: 双胞胎、一家人住在一起
+func _v11() -> void:
+	var g: Game = main.game
+	g.fixed_time = T0
+	g.offset = 0
+	g.places = ["grass", "lake", "sky"]
+	g.residents = {}
+	g.pet = Helpers.at("huolong", Rules.EASY, T0)
+	g.pet.personality = "lively"
+	g.pet.hue = 0.02
+	g.pet.feature = "horn"
+	g.pet.twin = {"hue": 0.55, "feature": "leaf", "extra": "wing"}
+	g.pet.hunger = 4
+	g.pet.happy = 4
+	main._asked_personality = true
+	main.screen.mode = "pet"
+	main.screen.pet_x = 4
+	main._refresh()
+	main.message.text = "孵出来啦! 是一对双胞胎「小团子」! 两个小肚子都咕咕叫, 快喂它们~"
+	await _shot("b1_双胞胎")
+	main.screen.mode = "status"
+	main.screen.status_page = 1
+	main.screen.status_until = main.screen.t + 99
+	await _shot("b2_名片双胞胎")
+	main.screen.mode = "pet"
+	g.pet.match_offers = [{"species": "hailong", "hue": 0.6, "feature": "fin", "extra": ""}]
+	g.pet.wants_match = true
+	main._asked_match = false
+	main._refresh()
+	main.choose(0)
+	await _shot("b3_让谁去结婚")
+	main._pick_twin(1, main._answer_match.bind(0))
+	main.close_dialog()
+	g.residents["grass"].append({"species": "linlu", "hue": 0.3, "feature": "flower", "extra": "", "why": "left", "gen": 1, "family": 1})
+	g.pet = Helpers.at("jianjiao", Rules.EASY, g.fixed_time)
+	g.pet.personality = "lively"
+	g.pet.hunger = 4
+	g.pet.happy = 3
+	main._refresh()
+	main.do_action("out")
+	await _shot("b4_出门有看看家人")
+	main._ask_visit()
+	await _shot("b5_去看看家人")
+	main._visit("grass")
+	main.screen.t = main.screen.out_until - 1.5
+	await _shot("b6_跟家人一起玩")
+	main.screen.mode = "pet"
+	main._show_family()
+	await _shot("b7_家谱有双胞胎")
+	main.close_dialog()
+	g.residents = {}
+
+
 func _run() -> void:
 	main.game.use_system_tz = false  # 游戏的 _ready 这时候才跑完
 	main.game.tz = 0
@@ -692,6 +745,7 @@ func _run() -> void:
 	await _v8()
 	await _v9()
 	await _v10()
+	await _v11()
 	# 开始界面: 养着魔物的时候
 	var again = load("res://scenes/main.tscn").instantiate()
 	main.game.offset = main.game.clock() - int(Time.get_unix_time_from_system())  # 再打开的那个看真的钟, 拨到一样的时间

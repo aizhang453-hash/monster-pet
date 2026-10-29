@@ -45,6 +45,8 @@ var date_ok := {}           # 刚约会成功的那位, 等你决定求不求婚
 # 第十版: 老年和家谱
 var matchmaker := {}        # 以前养的、老了去当媒人的那只 (它的样子 + gen); 空 = 普通的媒人
 var family_id := 0          # 现在这一家是第几个家族 (孵留下的蛋接着这一家; 换一颗全新的蛋就是新的一家)
+# 第十一版: 一家人住在一起 (学乐园: 以前养大的住到它长大的那个地方)
+var residents := {}         # 地方 -> [{species, hue, feature, extra, gen, why (parents 结婚的两口子 / left 放走的 / twin 双胞胎的另一只), family}], 早来的在前面
 var rng := RandomNumberGenerator.new()
 
 
@@ -76,12 +78,15 @@ func new_egg(diff: String, t := -1, place := "grass", genes := {}) -> void:
 	pet.feature = str(genes.get("feature", ""))
 	pet.extra = str(genes.get("extra", ""))
 	pet.pair = Array(genes.get("pair", [])).duplicate()
+	pet.twin = (genes.get("twin", {}) as Dictionary).duplicate() if genes.get("twin") is Dictionary else {}
 	next_egg = {}
 	date_offers = []
 	date_ok = {}
 	proposal = ""
 	if Species.line_of(pet.pair) != "":
 		messages.append({"text": "第 %d 代的蛋…… 咦, 它在闪闪发光! 好像跟别的蛋不一样呢" % pet.gen, "rank": 4})
+	elif not pet.twin.is_empty():
+		messages.append({"text": "第 %d 代的蛋…… 咦, 里面好像有两只在动! 是双胞胎蛋哦" % pet.gen, "rank": 4})
 	elif pet.gen > 1:
 		messages.append({"text": "第 %d 代的蛋! 等一会儿就会孵出来。" % pet.gen, "rank": 4})
 	else:
@@ -120,7 +125,15 @@ func _take_events() -> void:
 					"difficulty": pet.difficulty, "ended_at": pet.ended_at, "rank": pet.rank, "gen": pet.gen,
 					"partner": pet.partner.get("species", ""),
 					# 第十版: 家谱要用的
-					"look": Genes.look_of(pet), "partner_look": pet.partner.duplicate(), "family": family_id, "place": pet.place, "old": pet.old})
+					"look": Genes.look_of(pet), "partner_look": pet.partner.duplicate(), "family": family_id, "place": pet.place, "old": pet.old,
+					"twin": pet.twin_look()})
+				# 第十一版: 一家人住进它长大的地方 (结婚的两口子、放走的、双胞胎的另一只; 死了的和去当媒人的不算)
+				if e.reason in ["married", "left"]:
+					_move_in(pet.place, Genes.look_of(pet), "parents" if e.reason == "married" else "left")
+				if e.reason == "married":
+					_move_in(pet.place, pet.partner, "parents")
+				if e.reason in ["married", "left", "matchmaker"] and not pet.twin.is_empty():
+					_move_in(pet.place, pet.twin_look(), "twin")
 				if e.reason == "married":
 					# 第七版: 生下一颗蛋, 两口子搬去爸妈家; 过一天寄信来 (信里的话是 Claude 暂定的)
 					parents = {"a": Genes.look_of(pet), "b": pet.partner, "gen": pet.gen}
@@ -156,6 +169,8 @@ func describe(e: Dictionary) -> String:
 			var d: Dictionary = Species.DATA[e.id]
 			if e.from == "egg" and d.has("line"):
 				return "哇! 孵出来的是没见过的「%s」! 是%s的宝宝哦, 它肚子咕咕叫, 快喂它~" % [Species.name_of(e.id), Species.LINES[d.line].name]
+			if e.from == "egg" and pet != null and not pet.twin.is_empty():
+				return "孵出来啦! 是一对双胞胎「%s」! 两个小肚子都咕咕叫, 快喂它们~" % Species.name_of(e.id)
 			if e.from == "egg":
 				return "孵出来啦! 是「%s」! 它肚子咕咕叫, 快喂它~" % Species.name_of(e.id)
 			if d.get("hybrid", false):
@@ -699,6 +714,49 @@ func family_photo() -> Dictionary:
 	return out
 
 
+# ---------------------------------------------------------------- 第十一版: 一家人住在一起
+
+## 搬进一个地方住 (学乐园: 每块地最多住 RESIDENTS_MAX 位, 再来就把最早来的挤走, 它出门旅行去了)
+func _move_in(place: String, look: Dictionary, why: String) -> void:
+	if not Species.PLACES.has(place) or look.is_empty() or not Species.DATA.has(str(look.get("species", ""))):
+		return
+	var r := {"species": str(look.species), "hue": float(look.get("hue", -1.0)), "feature": str(look.get("feature", "")),
+		"extra": str(look.get("extra", "")), "why": why, "gen": pet.gen if pet != null else 1, "family": family_id}
+	if not residents.has(place):
+		residents[place] = []
+	residents[place].append(r)
+	while residents[place].size() > Rules.RESIDENTS_MAX:
+		var gone: Dictionary = residents[place].pop_front()
+		messages.append({"text": "%s住满啦, 最早搬来的「%s」出门旅行去了~" % [Species.PLACES[place].name, Species.name_of(gone.species)], "rank": 2})
+
+
+## 哪些地方住着家人 (按地方的顺序)
+func places_with_family() -> Array:
+	return Species.PLACE_ORDER.filter(func(p): return residents.has(p) and not residents[p].is_empty())
+
+
+## 去看看住在那个地方的家人: 回 {ok, text, place}。2 小时一次开心 +1 (跟出门一样)
+func visit_family(place: String) -> Dictionary:
+	tick()
+	var r := can_go_out()
+	if r != "ok":
+		return {"ok": false, "text": {"small": "还太小了, 长到小孩才能出门哦", "asleep": "嘘, 它在睡觉呢", "sick": "它生病了, 先把病治好吧",
+			"away": "它不在家"}.get(r, ""), "place": place}
+	if not place in places_with_family():
+		return {"ok": false, "text": "那里还没有家人住哦", "place": place}
+	var now := clock()
+	var key := "family_" + place
+	var fresh := now - int(out_at.get(key, -Outings.COOLDOWN)) >= Outings.COOLDOWN
+	pet.soil()
+	if fresh:
+		out_at[key] = now
+		pet.happy = mini(4, pet.happy + 1)
+	last_result = "ok"
+	var n: int = residents[place].size()
+	return {"ok": true, "place": place, "text": ("去%s看了看家人, %d 位家人围过来, 一起玩了好一会儿! 开心 +1" % [Species.PLACES[place].name, n]) if fresh
+		else "又去%s看了看家人, 大家挥挥手~" % Species.PLACES[place].name}
+
+
 ## 第八版: 带它去美食街的店吃东西: 回 {text, ok, icon}
 func eat_out(shop: String) -> Dictionary:
 	tick()
@@ -1014,7 +1072,7 @@ func to_dict() -> Dictionary:
 		"letters": letters, "pending_letters": pending_letters, "celebrated": celebrated, "souvenirs": souvenirs,
 		"parents": parents, "next_egg": next_egg,
 		"friends": friends, "proposal": proposal, "date_offers": date_offers, "date_day": date_day, "dates_today": dates_today, "date_ok": date_ok,
-		"matchmaker": matchmaker, "family_id": family_id}
+		"matchmaker": matchmaker, "family_id": family_id, "residents": residents}
 
 
 static func from_dict(d: Dictionary) -> Game:
@@ -1094,6 +1152,13 @@ static func from_dict(d: Dictionary) -> Game:
 	if d.get("matchmaker") is Dictionary and Species.DATA.has(str(d.matchmaker.get("species", ""))):
 		g.matchmaker = d.matchmaker
 	g.family_id = int(d.get("family_id", 0))
+	# 第十一版加的
+	for place in d.get("residents", {}):
+		if Species.PLACES.has(place) and d.residents[place] is Array:
+			g.residents[place] = []
+			for r in d.residents[place]:
+				if r is Dictionary and Species.DATA.has(str(r.get("species", ""))):
+					g.residents[place].append(r)
 	if g.family_id == 0:
 		g._guess_family()  # 以前版本的存档没有家谱: 照第几代往回接
 	g._unlock_places()  # 以前版本养大过成年的, 直接打开新地方
